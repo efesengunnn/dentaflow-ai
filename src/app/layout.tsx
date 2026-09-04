@@ -33,8 +33,8 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "ClinicFlow AI",
-  description: "Estetik klinikleri için yapay zeka destekli yönetim platformu.",
+  title: "DentaFlow AI",
+  description: "Diş klinikleri için modern yönetim platformu.",
 };
 
 export default function RootLayout({

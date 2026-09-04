@@ -71,6 +71,11 @@ function AppointmentForm({
     label: `${patient.fullName} · ${formatTurkishPhoneDisplay(patient.phone)}`,
   }))
 
+  const staffComboOptions = staffOptions.map((staff) => ({
+    value: staff.id,
+    label: staff.fullName,
+  }))
+
   const handleSubmit = form.handleSubmit((values) => {
     setFormError(null)
     startTransition(async () => {
@@ -105,6 +110,19 @@ function AppointmentForm({
               searchPlaceholder="İsim veya telefon ara..."
               onCreateNew={() => setQuickAddOpen(true)}
               createNewLabel="Yeni Hasta Ekle"
+            />
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="staffId"
+          label="Sağlayıcı"
+          render={({ field }) => (
+            <Combobox
+              options={staffComboOptions}
+              value={field.value}
+              onChange={field.onChange}
+              placeholder="Sağlayıcı seçin"
             />
           )}
         />

@@ -64,7 +64,7 @@ export default function DavetPage() {
           <div className="bg-primary text-primary-foreground flex size-9 items-center justify-center rounded-lg">
             <Sparkles className="size-4.5" />
           </div>
-          <h1 className="text-lg font-semibold tracking-tight">ClinicFlow AI</h1>
+          <h1 className="text-lg font-semibold tracking-tight">DentaFlow AI</h1>
         </div>
         <Card>
           <CardHeader>

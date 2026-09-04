@@ -31,7 +31,7 @@ export default function LoginPage() {
             <Sparkles className="size-4.5" />
           </div>
           <h1 className="text-lg font-semibold tracking-tight">
-            ClinicFlow AI
+            DentaFlow AI
           </h1>
         </div>
         <Card>

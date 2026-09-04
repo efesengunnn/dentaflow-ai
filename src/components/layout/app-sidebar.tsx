@@ -21,7 +21,7 @@ export function AppSidebar({ clinicName, role }: { clinicName: string; role: Sta
             <Sparkles className="size-4" />
           </div>
           <span className="text-[0.95rem] font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
-            ClinicFlow <span className="text-primary">AI</span>
+            DentaFlow <span className="text-primary">AI</span>
           </span>
         </div>
         <WorkspaceSwitcher clinicName={clinicName} />
