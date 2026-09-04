@@ -89,3 +89,24 @@ export async function getToothTreatmentsForPatient(patientId: string): Promise<T
   if (error) throw error
   return (data ?? []).map(mapToothTreatmentRow)
 }
+
+/**
+ * Planned treatments not yet tied to any appointment — feeds the
+ * appointment form's "Bağlı Tedaviler" picker (link an already-defined
+ * treatment to the appointment being created) and the tooth detail sheet's
+ * "Bu Tedavi İçin Randevu Oluştur" shortcut.
+ */
+export async function getUnlinkedPlannedTreatmentsForPatient(patientId: string): Promise<ToothTreatmentRow[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("tooth_treatments")
+    .select(TOOTH_TREATMENT_SELECT)
+    .eq("patient_id", patientId)
+    .eq("status", "planlandi")
+    .is("appointment_id", null)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+
+  if (error) throw error
+  return (data ?? []).map(mapToothTreatmentRow)
+}

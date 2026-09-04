@@ -2,7 +2,8 @@
 
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
-import { ChevronLeft, ClipboardList, Plus } from "lucide-react"
+import { CalendarPlus, ChevronLeft, ClipboardList, Plus } from "lucide-react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
@@ -181,15 +182,24 @@ function ToothDetailSheet({
                         )}
                         {treatment.note && <p className="text-sm">{treatment.note}</p>}
                         {treatment.status === "planlandi" && canManageClinical && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="mt-1 w-fit"
-                            disabled={isPending}
-                            onClick={() => handleMarkCompleted(treatment.id)}
-                          >
-                            Tamamlandı Olarak İşaretle
-                          </Button>
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isPending}
+                              onClick={() => handleMarkCompleted(treatment.id)}
+                            >
+                              Tamamlandı Olarak İşaretle
+                            </Button>
+                            {!treatment.appointmentId && (
+                              <Button size="sm" variant="outline" asChild>
+                                <Link href={`/appointments/new?patientId=${patientId}&treatmentId=${treatment.id}`}>
+                                  <CalendarPlus />
+                                  Bu Tedavi İçin Randevu Oluştur
+                                </Link>
+                              </Button>
+                            )}
+                          </div>
                         )}
                       </div>
                     ))}

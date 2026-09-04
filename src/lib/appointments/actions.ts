@@ -17,6 +17,7 @@ import { formatTurkishPhoneDisplay } from "@/lib/format/phone"
 import { getAssignableStaff } from "@/lib/staff/queries"
 import type { Database } from "@/lib/supabase/database.types"
 import { createClient } from "@/lib/supabase/server"
+import { linkTreatmentsToAppointment } from "@/lib/teeth/actions"
 import { flattenZodError } from "@/lib/validation/zod"
 
 type AppointmentActivityInsert = Database["public"]["Tables"]["appointment_activities"]["Insert"]
@@ -124,6 +125,10 @@ export async function insertAppointment(values: AppointmentFormValues): Promise<
     })
   }
   await supabase.from("appointment_activities").insert(activities)
+
+  if (parsed.data.treatmentIds && parsed.data.treatmentIds.length > 0) {
+    await linkTreatmentsToAppointment(appointment.id, parsed.data.treatmentIds)
+  }
 
   revalidatePath("/appointments")
   revalidatePath(`/patients/${parsed.data.patientId}`)

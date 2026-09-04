@@ -1,13 +1,14 @@
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 
 import { QuickAddPatientSheet } from "@/components/appointments/quick-add-patient-sheet"
 import { FormError } from "@/components/shared/form-error"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Combobox } from "@/components/ui/combobox"
 import { DatePicker } from "@/components/ui/date-picker"
 import { FieldGroup } from "@/components/ui/field"
@@ -33,6 +34,9 @@ import { dateStringToLocalDate, localDateToDateString } from "@/lib/format/date"
 import { formatTurkishPhoneDisplay } from "@/lib/format/phone"
 import type { PatientOption } from "@/lib/patients/queries"
 import type { AssignableStaff } from "@/lib/staff/queries"
+import { fetchUnlinkedTreatmentsForPatient } from "@/lib/teeth/actions"
+import { TOOTH_TREATMENT_TYPE_LABELS } from "@/lib/teeth/constants"
+import type { ToothTreatmentRow } from "@/lib/teeth/queries"
 
 type AppointmentFormProps = {
   mode: "create" | "edit"
@@ -42,6 +46,11 @@ type AppointmentFormProps = {
   onSubmit: (values: AppointmentFormValues) => Promise<AppointmentActionState>
   onSuccess?: () => void
   submitLabel?: string
+}
+
+function treatmentLabel(treatment: ToothTreatmentRow): string {
+  const name = treatment.treatmentType === "diger" ? treatment.customTreatmentName : TOOTH_TREATMENT_TYPE_LABELS[treatment.treatmentType]
+  return `Diş ${treatment.toothNumber} · ${name}`
 }
 
 function AppointmentForm({
@@ -60,11 +69,32 @@ function AppointmentForm({
   // `patientOptions` prop only ever seeds the initial list.
   const [localPatientOptions, setLocalPatientOptions] = useState(patientOptions)
   const [quickAddOpen, setQuickAddOpen] = useState(false)
+  // Only relevant when creating: the patient's already-defined, unlinked
+  // planned tooth treatments — the "Bu Tedavi İçin Randevu Oluştur" shortcut
+  // and the "Bağlı Tedaviler" picker both flow through this.
+  const [unlinkedTreatments, setUnlinkedTreatments] = useState<ToothTreatmentRow[]>([])
 
   const form = useForm<AppointmentFormValues>({
     resolver: zodResolver(appointmentFormSchema),
     defaultValues: { ...appointmentFormDefaults, ...defaultValues },
   })
+
+  const patientId = form.watch("patientId")
+  const treatmentIds = form.watch("treatmentIds") ?? []
+
+  useEffect(() => {
+    if (mode !== "create" || !patientId) {
+      setUnlinkedTreatments([])
+      return
+    }
+    let cancelled = false
+    fetchUnlinkedTreatmentsForPatient(patientId).then((rows) => {
+      if (!cancelled) setUnlinkedTreatments(rows)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [mode, patientId])
 
   const patientComboOptions = localPatientOptions.map((patient) => ({
     value: patient.id,
@@ -164,6 +194,31 @@ function AppointmentForm({
             </Select>
           )}
         />
+        {mode === "create" && unlinkedTreatments.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-medium">Bağlı Tedaviler (opsiyonel)</span>
+            <p className="text-xs text-muted-foreground">
+              Bu hasta için tanımlanmış, henüz bir randevuya bağlanmamış planlı tedaviler.
+            </p>
+            <div className="flex flex-col gap-2 rounded-lg border p-3">
+              {unlinkedTreatments.map((treatment) => (
+                <label key={treatment.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={treatmentIds.includes(treatment.id)}
+                    onCheckedChange={(checked) => {
+                      const next =
+                        checked === true
+                          ? [...treatmentIds, treatment.id]
+                          : treatmentIds.filter((id) => id !== treatment.id)
+                      form.setValue("treatmentIds", next)
+                    }}
+                  />
+                  {treatmentLabel(treatment)}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         <FormField
           control={form.control}
           name="reason"

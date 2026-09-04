@@ -1,5 +1,7 @@
 "use client"
 
+import { Check } from "lucide-react"
+
 import { LOWER_ARCH_TEETH, TOOTH_CONDITION_COLORS, TOOTH_CONDITION_LABELS, UPPER_ARCH_TEETH } from "@/lib/teeth/constants"
 import type { ToothConditionRow } from "@/lib/teeth/queries"
 import { cn } from "@/lib/utils"
@@ -8,6 +10,8 @@ type ToothChartProps = {
   conditions: Map<number, ToothConditionRow>
   onToothClick: (toothNumber: number) => void
   selectedTooth?: number | null
+  /** When set (even empty), the chart renders in multi-select mode: every tooth gets a checkmark overlay if its number is in the set, instead of the single-selection ring. */
+  multiSelectedTeeth?: Set<number>
 }
 
 /**
@@ -24,25 +28,27 @@ function ToothButton({
   toothNumber,
   colorClass,
   isSelected,
+  isMultiSelected,
   onClick,
 }: {
   toothNumber: number
   colorClass: string
   isSelected: boolean
+  isMultiSelected: boolean
   onClick: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex flex-col items-center gap-1"
+      className="group relative flex flex-col items-center gap-1"
       aria-label={`Diş ${toothNumber}`}
     >
       <svg
         viewBox="0 0 32 40"
         className={cn(
           "size-8 transition-transform duration-150 group-hover:scale-110 sm:size-9",
-          isSelected && "scale-110",
+          (isSelected || isMultiSelected) && "scale-110",
         )}
       >
         <path
@@ -50,14 +56,19 @@ function ToothButton({
           className={cn(
             colorClass,
             "stroke-[1.5] transition-all duration-150",
-            isSelected ? "stroke-foreground stroke-2" : "",
+            isSelected || isMultiSelected ? "stroke-foreground stroke-2" : "",
           )}
         />
       </svg>
+      {isMultiSelected && (
+        <span className="absolute -top-1 right-0 flex size-3.5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <Check className="size-2.5" />
+        </span>
+      )}
       <span
         className={cn(
           "font-mono text-[0.65rem] text-muted-foreground transition-colors",
-          isSelected && "font-semibold text-foreground",
+          (isSelected || isMultiSelected) && "font-semibold text-foreground",
         )}
       >
         {toothNumber}
@@ -70,11 +81,13 @@ function ArchRow({
   teeth,
   conditions,
   selectedTooth,
+  multiSelectedTeeth,
   onToothClick,
 }: {
   teeth: number[]
   conditions: Map<number, ToothConditionRow>
   selectedTooth?: number | null
+  multiSelectedTeeth?: Set<number>
   onToothClick: (toothNumber: number) => void
 }) {
   const leftQuadrant = teeth.slice(0, 8)
@@ -89,6 +102,7 @@ function ArchRow({
             toothNumber={toothNumber}
             colorClass={toothStatusColor(conditions, toothNumber)}
             isSelected={selectedTooth === toothNumber}
+            isMultiSelected={multiSelectedTeeth?.has(toothNumber) ?? false}
             onClick={() => onToothClick(toothNumber)}
           />
         ))}
@@ -101,6 +115,7 @@ function ArchRow({
             toothNumber={toothNumber}
             colorClass={toothStatusColor(conditions, toothNumber)}
             isSelected={selectedTooth === toothNumber}
+            isMultiSelected={multiSelectedTeeth?.has(toothNumber) ?? false}
             onClick={() => onToothClick(toothNumber)}
           />
         ))}
@@ -120,12 +135,24 @@ const LEGEND_STATUSES: (keyof typeof TOOTH_CONDITION_LABELS)[] = [
   "eksik",
 ]
 
-function ToothChart({ conditions, onToothClick, selectedTooth }: ToothChartProps) {
+function ToothChart({ conditions, onToothClick, selectedTooth, multiSelectedTeeth }: ToothChartProps) {
   return (
     <div className="flex flex-col items-center gap-6 rounded-2xl border bg-card p-6">
-      <ArchRow teeth={UPPER_ARCH_TEETH} conditions={conditions} selectedTooth={selectedTooth} onToothClick={onToothClick} />
+      <ArchRow
+        teeth={UPPER_ARCH_TEETH}
+        conditions={conditions}
+        selectedTooth={selectedTooth}
+        multiSelectedTeeth={multiSelectedTeeth}
+        onToothClick={onToothClick}
+      />
       <div className="h-px w-full max-w-md bg-border" />
-      <ArchRow teeth={LOWER_ARCH_TEETH} conditions={conditions} selectedTooth={selectedTooth} onToothClick={onToothClick} />
+      <ArchRow
+        teeth={LOWER_ARCH_TEETH}
+        conditions={conditions}
+        selectedTooth={selectedTooth}
+        multiSelectedTeeth={multiSelectedTeeth}
+        onToothClick={onToothClick}
+      />
 
       <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t pt-4 text-xs text-muted-foreground">
         {LEGEND_STATUSES.map((status) => (

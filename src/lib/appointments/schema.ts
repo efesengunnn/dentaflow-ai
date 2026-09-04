@@ -19,6 +19,8 @@ export const appointmentFormSchema = z.object({
   status: z.enum(APPOINTMENT_STATUS_VALUES, { message: "Durum seçin." }),
   reason: z.string().trim().max(200, "Sebep 200 karakteri geçemez.").optional(),
   note: z.string().trim().max(2000, "Not 2000 karakteri geçemez.").optional(),
+  /** Already-defined, unlinked planned tooth treatments to attach to this appointment — see "Bağlı Tedaviler". */
+  treatmentIds: z.array(z.string()).optional(),
 })
 
 export type AppointmentFormValues = z.infer<typeof appointmentFormSchema>
@@ -31,6 +33,7 @@ export const appointmentFormDefaults: AppointmentFormValues = {
   status: "scheduled",
   reason: "",
   note: "",
+  treatmentIds: [],
 }
 
 /**
