@@ -1,20 +1,25 @@
-import { CalendarDays, FileText, History, Pencil, Plus } from "lucide-react"
+import { CalendarDays, FileText, History, Pencil, Plus, Stethoscope, Wallet } from "lucide-react"
 import Link from "next/link"
 
 import { AppointmentAgendaList } from "@/components/appointments/appointment-agenda-list"
 import { BreadcrumbLabel } from "@/components/layout/breadcrumb-label"
+import { PatientPaymentsSection } from "@/components/payments/patient-payments-section"
 import { InfoGrid } from "@/components/shared/info-grid"
 import { PageContainer } from "@/components/shared/page-container"
 import { PageSection } from "@/components/shared/page-section"
 import { PlaceholderCard } from "@/components/shared/placeholder-card"
+import { DentalChartSection } from "@/components/teeth/dental-chart-section"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { getInitials } from "@/lib/utils"
 import type { AppointmentListRow } from "@/lib/appointments/queries"
 import { formatIstanbulDateTime } from "@/lib/format/date"
 import { formatTurkishPhoneDisplay } from "@/lib/format/phone"
+import type { PatientBalance, PatientPaymentRow } from "@/lib/payments/queries"
 import type { PatientActivityRow, PatientDetail, PatientOption } from "@/lib/patients/queries"
 import type { AssignableStaff } from "@/lib/staff/queries"
+import type { ToothConditionRow, ToothTreatmentRow } from "@/lib/teeth/queries"
+import type { CatalogItem } from "@/lib/treatment-catalog/queries"
 import { AppointmentErrorToast } from "./appointment-error-toast"
 import { PatientActivityTimeline } from "./patient-activity-timeline"
 import { PatientDeleteDialog } from "./patient-delete-dialog"
@@ -22,9 +27,8 @@ import { PatientEditSheet } from "./patient-edit-sheet"
 import { PatientInfoPanel } from "./patient-info-panel"
 
 /**
- * Right column is a stack of `PageSection`s — adding a real
- * Treatments/Documents/AI module later means inserting one more
- * `PageSection` here, not redesigning this page.
+ * Right column is a stack of `PageSection`s — adding a real module later
+ * means inserting one more `PageSection` here, not redesigning this page.
  */
 function PatientDetailView({
   patient,
@@ -34,6 +38,13 @@ function PatientDetailView({
   patientOptions,
   canManage,
   appointmentError,
+  toothConditions,
+  toothTreatments,
+  catalog,
+  balance,
+  payments,
+  canManagePayments,
+  canManageClinical,
 }: {
   patient: PatientDetail
   activities: PatientActivityRow[]
@@ -42,6 +53,13 @@ function PatientDetailView({
   patientOptions: PatientOption[]
   canManage: boolean
   appointmentError?: string
+  toothConditions: Map<number, ToothConditionRow>
+  toothTreatments: ToothTreatmentRow[]
+  catalog: CatalogItem[]
+  balance: PatientBalance
+  payments: PatientPaymentRow[]
+  canManagePayments: boolean
+  canManageClinical: boolean
 }) {
   const now = new Date()
   const nextAppointment = appointments
@@ -123,6 +141,26 @@ function PatientDetailView({
         <PatientInfoPanel patient={patient} />
 
         <div className="flex flex-col gap-8">
+          <PageSection title="Diş Haritası" icon={Stethoscope}>
+            <DentalChartSection
+              patientId={patient.id}
+              conditions={toothConditions}
+              treatments={toothTreatments}
+              staffOptions={staffOptions}
+              catalog={catalog}
+              canManageClinical={canManageClinical}
+            />
+          </PageSection>
+
+          <PageSection title="Ödemeler" icon={Wallet}>
+            <PatientPaymentsSection
+              patientId={patient.id}
+              balance={balance}
+              payments={payments}
+              canManagePayments={canManagePayments}
+            />
+          </PageSection>
+
           <PageSection title="Randevular" icon={CalendarDays}>
             <AppointmentAgendaList
               appointments={appointments}
@@ -146,7 +184,7 @@ function PatientDetailView({
           <PageSection title="Yakında">
             <PlaceholderCard
               icon={FileText}
-              text="Tedavi kayıtları ve belge yönetimi henüz aktif değil — bu bölümler burada yer alacak."
+              text="Belge yönetimi (rıza formları, röntgenler) henüz aktif değil — bu bölüm burada yer alacak."
             />
           </PageSection>
         </div>

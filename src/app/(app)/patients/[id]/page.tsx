@@ -3,8 +3,11 @@ import { notFound } from "next/navigation"
 import { PatientDetailView } from "@/components/patients/patient-detail-view"
 import { getAppointmentsForPatient } from "@/lib/appointments/queries"
 import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
+import { getPatientBalance, getPatientPayments } from "@/lib/payments/queries"
 import { getPatientActivities, getPatientById, getPatientOptions } from "@/lib/patients/queries"
 import { getAssignableStaff } from "@/lib/staff/queries"
+import { getToothConditionsForPatient, getToothTreatmentsForPatient } from "@/lib/teeth/queries"
+import { getTreatmentCatalog } from "@/lib/treatment-catalog/queries"
 
 type PatientDetailPageProps = {
   params: Promise<{ id: string }>
@@ -15,13 +18,30 @@ export default async function PatientDetailPage({ params, searchParams }: Patien
   const { id } = await params
   const { randevuHata } = await searchParams
 
-  const [patient, staffMember, activities, appointments, staffOptions, patientOptions] = await Promise.all([
+  const [
+    patient,
+    staffMember,
+    activities,
+    appointments,
+    staffOptions,
+    patientOptions,
+    toothConditions,
+    toothTreatments,
+    catalog,
+    balance,
+    payments,
+  ] = await Promise.all([
     getPatientById(id),
     getCurrentStaffMember(),
     getPatientActivities(id),
     getAppointmentsForPatient(id),
     getAssignableStaff(),
     getPatientOptions(),
+    getToothConditionsForPatient(id),
+    getToothTreatmentsForPatient(id),
+    getTreatmentCatalog(),
+    getPatientBalance(id),
+    getPatientPayments(id),
   ])
 
   if (!patient) {
@@ -29,6 +49,8 @@ export default async function PatientDetailPage({ params, searchParams }: Patien
   }
 
   const canManage = staffMember?.role !== "doctor"
+  const canManagePayments = staffMember?.role === "owner" || staffMember?.role === "secretary"
+  const canManageClinical = staffMember?.role === "owner" || staffMember?.role === "doctor"
 
   return (
     <PatientDetailView
@@ -39,6 +61,13 @@ export default async function PatientDetailPage({ params, searchParams }: Patien
       patientOptions={patientOptions}
       canManage={canManage}
       appointmentError={randevuHata}
+      toothConditions={toothConditions}
+      toothTreatments={toothTreatments}
+      catalog={catalog}
+      balance={balance}
+      payments={payments}
+      canManagePayments={canManagePayments}
+      canManageClinical={canManageClinical}
     />
   )
 }

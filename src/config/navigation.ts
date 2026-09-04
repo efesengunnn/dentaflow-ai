@@ -5,6 +5,7 @@ import {
   Plug,
   Settings,
   ShieldCheck,
+  Stethoscope,
   UserRound,
   Users,
   type LucideIcon,
@@ -46,8 +47,7 @@ export function isNavGroup(entry: NavEntry): entry is NavGroup {
  * group is only worth it once a genuinely related cluster of modules
  * exists under a label the user's own vocabulary would recognize.
  * `NavGroup`/`isNavGroup` stay in the type surface for that future case;
- * `mainNav` just doesn't use one now. The dental treatment module (tooth
- * charting, procedures) is not yet in this skeleton — see project docs.
+ * `mainNav` just doesn't use one now.
  */
 export const mainNav: NavEntry[] = [
   { title: "Panel", href: "/dashboard", icon: LayoutDashboard },
@@ -70,6 +70,7 @@ export const settingsNav: NavLink[] = [
   { title: "Klinik", href: "/settings/clinic", icon: Building2 },
   { title: "Kullanıcılar", href: "/settings/users", icon: Users },
   { title: "Roller", href: "/settings/roles", icon: ShieldCheck },
+  { title: "Tedavi Kataloğu", href: "/settings/treatments", icon: Stethoscope },
   { title: "Entegrasyonlar", href: "/settings/integrations", icon: Plug },
 ];
 
