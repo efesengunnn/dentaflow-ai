@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -92,7 +97,6 @@ export type Database = {
       appointments: {
         Row: {
           clinic_id: string
-          control_date: string | null
           created_at: string
           created_by: string
           delete_reason: string | null
@@ -103,18 +107,13 @@ export type Database = {
           patient_id: string
           reason: string | null
           staff_id: string
-          standalone_price: number | null
-          standalone_treatment_name: string | null
           starts_at: string
           status: Database["public"]["Enums"]["appointment_status"]
-          treatment_plan_id: string | null
-          treatment_plan_item_id: string | null
           updated_at: string
           updated_by: string
         }
         Insert: {
           clinic_id: string
-          control_date?: string | null
           created_at?: string
           created_by: string
           delete_reason?: string | null
@@ -125,18 +124,13 @@ export type Database = {
           patient_id: string
           reason?: string | null
           staff_id: string
-          standalone_price?: number | null
-          standalone_treatment_name?: string | null
           starts_at: string
           status?: Database["public"]["Enums"]["appointment_status"]
-          treatment_plan_id?: string | null
-          treatment_plan_item_id?: string | null
           updated_at?: string
           updated_by: string
         }
         Update: {
           clinic_id?: string
-          control_date?: string | null
           created_at?: string
           created_by?: string
           delete_reason?: string | null
@@ -147,12 +141,8 @@ export type Database = {
           patient_id?: string
           reason?: string | null
           staff_id?: string
-          standalone_price?: number | null
-          standalone_treatment_name?: string | null
           starts_at?: string
           status?: Database["public"]["Enums"]["appointment_status"]
-          treatment_plan_id?: string | null
-          treatment_plan_item_id?: string | null
           updated_at?: string
           updated_by?: string
         }
@@ -190,20 +180,6 @@ export type Database = {
             columns: ["staff_id"]
             isOneToOne: false
             referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "appointments_treatment_plan_id_fkey"
-            columns: ["treatment_plan_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_plans"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "appointments_treatment_plan_item_id_fkey"
-            columns: ["treatment_plan_item_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_plan_items"
             referencedColumns: ["id"]
           },
           {
@@ -694,868 +670,6 @@ export type Database = {
           },
         ]
       }
-      staff_treatment_catalog_items: {
-        Row: {
-          clinic_id: string
-          created_at: string
-          created_by: string | null
-          default_price: number | null
-          id: string
-          is_active: boolean
-          staff_id: string
-          treatment_type: string
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          clinic_id: string
-          created_at?: string
-          created_by?: string | null
-          default_price?: number | null
-          id?: string
-          is_active?: boolean
-          staff_id: string
-          treatment_type: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          clinic_id?: string
-          created_at?: string
-          created_by?: string | null
-          default_price?: number | null
-          id?: string
-          is_active?: boolean
-          staff_id?: string
-          treatment_type?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "staff_treatment_catalog_items_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "staff_treatment_catalog_items_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "staff_treatment_catalog_items_staff_id_fkey"
-            columns: ["staff_id"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "staff_treatment_catalog_items_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      treatment_activities: {
-        Row: {
-          activity_type: Database["public"]["Enums"]["treatment_activity_type"]
-          clinic_id: string
-          created_at: string
-          created_by: string | null
-          description: string
-          id: string
-          metadata: Json | null
-          series_id: string | null
-          treatment_id: string | null
-          treatment_plan_id: string | null
-          treatment_plan_item_id: string | null
-          treatment_session_id: string | null
-        }
-        Insert: {
-          activity_type: Database["public"]["Enums"]["treatment_activity_type"]
-          clinic_id: string
-          created_at?: string
-          created_by?: string | null
-          description: string
-          id?: string
-          metadata?: Json | null
-          series_id?: string | null
-          treatment_id?: string | null
-          treatment_plan_id?: string | null
-          treatment_plan_item_id?: string | null
-          treatment_session_id?: string | null
-        }
-        Update: {
-          activity_type?: Database["public"]["Enums"]["treatment_activity_type"]
-          clinic_id?: string
-          created_at?: string
-          created_by?: string | null
-          description?: string
-          id?: string
-          metadata?: Json | null
-          series_id?: string | null
-          treatment_id?: string | null
-          treatment_plan_id?: string | null
-          treatment_plan_item_id?: string | null
-          treatment_session_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treatment_activities_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_activities_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_activities_series_id_fkey"
-            columns: ["series_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_series"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_activities_treatment_id_fkey"
-            columns: ["treatment_id"]
-            isOneToOne: false
-            referencedRelation: "treatments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_activities_treatment_plan_id_fkey"
-            columns: ["treatment_plan_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_plans"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_activities_treatment_plan_item_id_fkey"
-            columns: ["treatment_plan_item_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_plan_items"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_activities_treatment_session_id_fkey"
-            columns: ["treatment_session_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_sessions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      treatment_payments: {
-        Row: {
-          amount: number
-          clinic_id: string
-          created_at: string
-          currency: string
-          entry_type: Database["public"]["Enums"]["treatment_payment_entry_type"]
-          id: string
-          method: Database["public"]["Enums"]["treatment_payment_method"]
-          note: string | null
-          paid_at: string
-          recorded_by: string
-          related_payment_id: string | null
-          series_id: string | null
-          treatment_plan_id: string | null
-        }
-        Insert: {
-          amount: number
-          clinic_id: string
-          created_at?: string
-          currency?: string
-          entry_type?: Database["public"]["Enums"]["treatment_payment_entry_type"]
-          id?: string
-          method: Database["public"]["Enums"]["treatment_payment_method"]
-          note?: string | null
-          paid_at: string
-          recorded_by: string
-          related_payment_id?: string | null
-          series_id?: string | null
-          treatment_plan_id?: string | null
-        }
-        Update: {
-          amount?: number
-          clinic_id?: string
-          created_at?: string
-          currency?: string
-          entry_type?: Database["public"]["Enums"]["treatment_payment_entry_type"]
-          id?: string
-          method?: Database["public"]["Enums"]["treatment_payment_method"]
-          note?: string | null
-          paid_at?: string
-          recorded_by?: string
-          related_payment_id?: string | null
-          series_id?: string | null
-          treatment_plan_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treatment_payments_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_payments_recorded_by_fkey"
-            columns: ["recorded_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_payments_related_payment_id_fkey"
-            columns: ["related_payment_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_payments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_payments_series_id_fkey"
-            columns: ["series_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_series"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_payments_treatment_plan_id_fkey"
-            columns: ["treatment_plan_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_plans"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      treatment_plan_items: {
-        Row: {
-          catalog_item_id: string | null
-          clinic_id: string
-          control_date: string | null
-          created_at: string
-          created_by: string
-          delete_reason: string | null
-          deleted_at: string | null
-          deleted_by: string | null
-          id: string
-          legacy_series_id: string | null
-          patient_id: string
-          provider_id: string
-          provider_share_amount: number | null
-          revision_no: number
-          session_count: number
-          status: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          total_price: number | null
-          treatment_name: string
-          treatment_plan_id: string
-          unit_price: number | null
-          updated_at: string
-          updated_by: string
-        }
-        Insert: {
-          catalog_item_id?: string | null
-          clinic_id: string
-          control_date?: string | null
-          created_at?: string
-          created_by: string
-          delete_reason?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
-          id?: string
-          legacy_series_id?: string | null
-          patient_id: string
-          provider_id: string
-          provider_share_amount?: number | null
-          revision_no?: number
-          session_count?: number
-          status?: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          total_price?: number | null
-          treatment_name: string
-          treatment_plan_id: string
-          unit_price?: number | null
-          updated_at?: string
-          updated_by: string
-        }
-        Update: {
-          catalog_item_id?: string | null
-          clinic_id?: string
-          control_date?: string | null
-          created_at?: string
-          created_by?: string
-          delete_reason?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
-          id?: string
-          legacy_series_id?: string | null
-          patient_id?: string
-          provider_id?: string
-          provider_share_amount?: number | null
-          revision_no?: number
-          session_count?: number
-          status?: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          total_price?: number | null
-          treatment_name?: string
-          treatment_plan_id?: string
-          unit_price?: number | null
-          updated_at?: string
-          updated_by?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treatment_plan_items_catalog_item_id_fkey"
-            columns: ["catalog_item_id"]
-            isOneToOne: false
-            referencedRelation: "staff_treatment_catalog_items"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plan_items_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plan_items_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plan_items_deleted_by_fkey"
-            columns: ["deleted_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plan_items_legacy_series_id_fkey"
-            columns: ["legacy_series_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_series"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plan_items_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plan_items_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plan_items_treatment_plan_id_fkey"
-            columns: ["treatment_plan_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_plans"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plan_items_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      treatment_plans: {
-        Row: {
-          clinic_id: string
-          created_at: string
-          created_by: string
-          currency: string
-          delete_reason: string | null
-          deleted_at: string | null
-          deleted_by: string | null
-          id: string
-          legacy_series_id: string | null
-          patient_id: string
-          plan_name: string
-          status: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          updated_at: string
-          updated_by: string
-        }
-        Insert: {
-          clinic_id: string
-          created_at?: string
-          created_by: string
-          currency?: string
-          delete_reason?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
-          id?: string
-          legacy_series_id?: string | null
-          patient_id: string
-          plan_name: string
-          status?: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          updated_at?: string
-          updated_by: string
-        }
-        Update: {
-          clinic_id?: string
-          created_at?: string
-          created_by?: string
-          currency?: string
-          delete_reason?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
-          id?: string
-          legacy_series_id?: string | null
-          patient_id?: string
-          plan_name?: string
-          status?: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          updated_at?: string
-          updated_by?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treatment_plans_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plans_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plans_deleted_by_fkey"
-            columns: ["deleted_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plans_legacy_series_id_fkey"
-            columns: ["legacy_series_id"]
-            isOneToOne: true
-            referencedRelation: "treatment_series"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plans_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_plans_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      treatment_products: {
-        Row: {
-          clinic_id: string
-          created_at: string
-          created_by: string
-          id: string
-          product_name: string
-          quantity: number
-          treatment_id: string
-          unit: string | null
-        }
-        Insert: {
-          clinic_id: string
-          created_at?: string
-          created_by: string
-          id?: string
-          product_name: string
-          quantity: number
-          treatment_id: string
-          unit?: string | null
-        }
-        Update: {
-          clinic_id?: string
-          created_at?: string
-          created_by?: string
-          id?: string
-          product_name?: string
-          quantity?: number
-          treatment_id?: string
-          unit?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treatment_products_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_products_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_products_treatment_id_fkey"
-            columns: ["treatment_id"]
-            isOneToOne: false
-            referencedRelation: "treatments"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      treatment_series: {
-        Row: {
-          clinic_id: string
-          created_at: string
-          created_by: string
-          currency: string
-          id: string
-          patient_id: string
-          status: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          total_fee: number | null
-          total_sessions: number
-          treatment_type: string
-          updated_at: string
-          updated_by: string
-        }
-        Insert: {
-          clinic_id: string
-          created_at?: string
-          created_by: string
-          currency?: string
-          id?: string
-          patient_id: string
-          status?: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          total_fee?: number | null
-          total_sessions?: number
-          treatment_type: string
-          updated_at?: string
-          updated_by: string
-        }
-        Update: {
-          clinic_id?: string
-          created_at?: string
-          created_by?: string
-          currency?: string
-          id?: string
-          patient_id?: string
-          status?: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          total_fee?: number | null
-          total_sessions?: number
-          treatment_type?: string
-          updated_at?: string
-          updated_by?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treatment_series_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_series_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_series_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_series_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      treatment_sessions: {
-        Row: {
-          appointment_id: string | null
-          clinic_id: string
-          control_date: string | null
-          corrected_at: string | null
-          corrected_by: string | null
-          correction_reason: string | null
-          created_at: string
-          created_by: string
-          delete_reason: string | null
-          deleted_at: string | null
-          deleted_by: string | null
-          id: string
-          legacy_treatment_id: string | null
-          notes: string | null
-          patient_id: string
-          performed_at: string
-          performed_by: string
-          replaced_by_session_id: string | null
-          session_number: number
-          status: Database["public"]["Enums"]["treatment_session_status"]
-          treatment_plan_item_id: string
-          unit_price_snapshot: number | null
-          updated_at: string
-        }
-        Insert: {
-          appointment_id?: string | null
-          clinic_id: string
-          control_date?: string | null
-          corrected_at?: string | null
-          corrected_by?: string | null
-          correction_reason?: string | null
-          created_at?: string
-          created_by: string
-          delete_reason?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
-          id?: string
-          legacy_treatment_id?: string | null
-          notes?: string | null
-          patient_id: string
-          performed_at: string
-          performed_by: string
-          replaced_by_session_id?: string | null
-          session_number: number
-          status?: Database["public"]["Enums"]["treatment_session_status"]
-          treatment_plan_item_id: string
-          unit_price_snapshot?: number | null
-          updated_at?: string
-        }
-        Update: {
-          appointment_id?: string | null
-          clinic_id?: string
-          control_date?: string | null
-          corrected_at?: string | null
-          corrected_by?: string | null
-          correction_reason?: string | null
-          created_at?: string
-          created_by?: string
-          delete_reason?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
-          id?: string
-          legacy_treatment_id?: string | null
-          notes?: string | null
-          patient_id?: string
-          performed_at?: string
-          performed_by?: string
-          replaced_by_session_id?: string | null
-          session_number?: number
-          status?: Database["public"]["Enums"]["treatment_session_status"]
-          treatment_plan_item_id?: string
-          unit_price_snapshot?: number | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treatment_sessions_appointment_id_fkey"
-            columns: ["appointment_id"]
-            isOneToOne: false
-            referencedRelation: "appointments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_sessions_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_sessions_corrected_by_fkey"
-            columns: ["corrected_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_sessions_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_sessions_deleted_by_fkey"
-            columns: ["deleted_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_sessions_legacy_treatment_id_fkey"
-            columns: ["legacy_treatment_id"]
-            isOneToOne: true
-            referencedRelation: "treatments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_sessions_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_sessions_performed_by_fkey"
-            columns: ["performed_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_sessions_replaced_by_session_id_fkey"
-            columns: ["replaced_by_session_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_sessions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatment_sessions_treatment_plan_item_id_fkey"
-            columns: ["treatment_plan_item_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_plan_items"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      treatments: {
-        Row: {
-          appointment_id: string | null
-          clinic_id: string
-          control_date: string | null
-          created_at: string
-          created_by: string
-          description: string | null
-          id: string
-          patient_id: string
-          series_id: string
-          session_number: number
-          staff_id: string
-          status: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          treatment_date: string
-          updated_at: string
-          updated_by: string
-        }
-        Insert: {
-          appointment_id?: string | null
-          clinic_id: string
-          control_date?: string | null
-          created_at?: string
-          created_by: string
-          description?: string | null
-          id?: string
-          patient_id: string
-          series_id: string
-          session_number: number
-          staff_id: string
-          status?: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          treatment_date: string
-          updated_at?: string
-          updated_by: string
-        }
-        Update: {
-          appointment_id?: string | null
-          clinic_id?: string
-          control_date?: string | null
-          created_at?: string
-          created_by?: string
-          description?: string | null
-          id?: string
-          patient_id?: string
-          series_id?: string
-          session_number?: number
-          staff_id?: string
-          status?: Database["public"]["Enums"]["treatment_lifecycle_status"]
-          treatment_date?: string
-          updated_at?: string
-          updated_by?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "treatments_appointment_id_fkey"
-            columns: ["appointment_id"]
-            isOneToOne: false
-            referencedRelation: "appointments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatments_clinic_id_fkey"
-            columns: ["clinic_id"]
-            isOneToOne: false
-            referencedRelation: "clinics"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatments_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatments_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatments_series_id_fkey"
-            columns: ["series_id"]
-            isOneToOne: false
-            referencedRelation: "treatment_series"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatments_staff_id_fkey"
-            columns: ["staff_id"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "treatments_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "staff_members"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       [_ in never]: never
@@ -1611,30 +725,6 @@ export type Database = {
         | "note_added"
         | "patient_deleted"
       staff_role: "owner" | "doctor" | "secretary" | "beauty_specialist"
-      treatment_activity_type:
-        | "series_created"
-        | "series_updated"
-        | "treatment_created"
-        | "treatment_updated"
-        | "status_changed"
-        | "payment_recorded"
-        | "note_added"
-        | "treatment_deleted"
-        | "plan_deleted"
-        | "plan_item_deleted"
-        | "session_deleted"
-      treatment_lifecycle_status:
-        | "active"
-        | "completed"
-        | "cancelled"
-        | "voided"
-      treatment_payment_entry_type: "payment" | "refund" | "adjustment" | "void"
-      treatment_payment_method:
-        | "cash"
-        | "credit_card"
-        | "bank_transfer"
-        | "other"
-      treatment_session_status: "completed" | "corrected" | "voided"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1650,12 +740,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1679,11 +769,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1704,11 +794,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1729,11 +819,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1746,11 +836,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1809,34 +899,6 @@ export const Constants = {
         "patient_deleted",
       ],
       staff_role: ["owner", "doctor", "secretary", "beauty_specialist"],
-      treatment_activity_type: [
-        "series_created",
-        "series_updated",
-        "treatment_created",
-        "treatment_updated",
-        "status_changed",
-        "payment_recorded",
-        "note_added",
-        "treatment_deleted",
-        "plan_deleted",
-        "plan_item_deleted",
-        "session_deleted",
-      ],
-      treatment_lifecycle_status: [
-        "active",
-        "completed",
-        "cancelled",
-        "voided",
-      ],
-      treatment_payment_entry_type: ["payment", "refund", "adjustment", "void"],
-      treatment_payment_method: [
-        "cash",
-        "credit_card",
-        "bank_transfer",
-        "other",
-      ],
-      treatment_session_status: ["completed", "corrected", "voided"],
     },
   },
 } as const
-

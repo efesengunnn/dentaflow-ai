@@ -1,0 +1,4 @@
+# Supabase CLI local artifacts (created by `supabase start` / `supabase db diff`)
+.branches
+.temp
+.env
