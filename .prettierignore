@@ -1,0 +1,19 @@
+# dependencies & build output
+node_modules
+.next
+out
+build
+coverage
+
+# tooling-internal, not project code
+.claude
+.git
+
+# static assets
+public
+
+# lockfiles
+package-lock.json
+
+# hand-authored documentation (formatted intentionally, not by Prettier)
+*.md
