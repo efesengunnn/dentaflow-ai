@@ -39,6 +39,7 @@ function AppointmentCalendar({
   selectedDay,
   patientOptions,
   staffOptions,
+  canManagePayments,
 }: {
   mode: CalendarMode
   anchor: Date
@@ -47,6 +48,7 @@ function AppointmentCalendar({
   selectedDay: Date
   patientOptions: PatientOption[]
   staffOptions: AssignableStaff[]
+  canManagePayments: boolean
 }) {
   const router = useRouter()
   const [newAppointmentDate, setNewAppointmentDate] = useState<Date | null>(null)
@@ -127,6 +129,7 @@ function AppointmentCalendar({
           appointments={selectedDayAppointments}
           emptyTitle="Bu gün için randevu bulunmuyor."
           newAppointmentHref={`/appointments/new?date=${localDateToDateString(selectedDay)}`}
+          canManagePayments={canManagePayments}
           patientOptions={patientOptions}
           staffOptions={staffOptions}
         />

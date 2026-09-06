@@ -1,140 +1,114 @@
 "use client"
 
-import { zodResolver } from "@hookform/resolvers/zod"
 import { Plus } from "lucide-react"
-import { useRouter } from "next/navigation"
-import { useState, useTransition, type ReactNode } from "react"
+import { useState } from "react"
 import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
 
 import { FormError } from "@/components/shared/form-error"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { FieldGroup } from "@/components/ui/field"
 import { FormField } from "@/components/ui/form-field"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Sheet,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import type { CatalogActionState } from "@/lib/treatment-catalog/actions"
-import { TOOTH_TREATMENT_TYPE_OPTIONS } from "@/lib/teeth/constants"
-import {
-  treatmentCatalogItemFormDefaults,
-  treatmentCatalogItemFormSchema,
-  type TreatmentCatalogItemFormValues,
-} from "@/lib/teeth/schema"
+import { createCatalogItem, updateCatalogItem } from "@/lib/treatment-catalog/actions"
+import { catalogItemFormSchema, type CatalogItemFormValues } from "@/lib/treatment-catalog/schema"
+import type { CatalogItem } from "@/lib/treatment-catalog/queries"
 
 type TreatmentCatalogItemSheetProps = {
-  mode: "create" | "edit"
-  defaultValues?: Partial<TreatmentCatalogItemFormValues>
-  onSubmit: (values: TreatmentCatalogItemFormValues) => Promise<CatalogActionState>
-  trigger?: ReactNode
+  staffId: string
+  staffName: string
+  /** Present when editing an existing item; absent for "add new". */
+  item?: CatalogItem
+  trigger?: React.ReactNode
 }
 
-function TreatmentCatalogItemSheet({ mode, defaultValues, onSubmit, trigger }: TreatmentCatalogItemSheetProps) {
-  const router = useRouter()
+/** Shared add/edit form — Ayarlar > Tedavi Kataloğu, owner-only (enforced server-side by the actions themselves). */
+function TreatmentCatalogItemSheet({ staffId, staffName, item, trigger }: TreatmentCatalogItemSheetProps) {
   const [open, setOpen] = useState(false)
-  const [isPending, startTransition] = useTransition()
-  const [formError, setFormError] = useState<string | null>(null)
+  const isEditing = item !== undefined
 
-  const form = useForm<TreatmentCatalogItemFormValues>({
-    resolver: zodResolver(treatmentCatalogItemFormSchema),
-    defaultValues: { ...treatmentCatalogItemFormDefaults, ...defaultValues },
+  const form = useForm<CatalogItemFormValues>({
+    resolver: zodResolver(catalogItemFormSchema),
+    defaultValues: {
+      staffId,
+      treatmentType: item?.treatmentType ?? "",
+      defaultPrice: item?.defaultPrice ?? undefined,
+    },
   })
 
-  const handleSubmit = form.handleSubmit((values) => {
-    setFormError(null)
-    startTransition(async () => {
-      const result = await onSubmit(values)
-      if (result?.error) {
-        setFormError(result.error)
-        if (result.fieldErrors) {
-          for (const [key, message] of Object.entries(result.fieldErrors)) {
-            form.setError(key as keyof TreatmentCatalogItemFormValues, { message })
-          }
+  const handleSubmit = form.handleSubmit(async (values) => {
+    const result = isEditing
+      ? await updateCatalogItem(item.id, { treatmentType: values.treatmentType, defaultPrice: values.defaultPrice })
+      : await createCatalogItem(values)
+
+    if (result?.error) {
+      toast.error(result.error)
+      if (result.fieldErrors) {
+        for (const [key, message] of Object.entries(result.fieldErrors)) {
+          form.setError(key as keyof CatalogItemFormValues, { message })
         }
-        return
       }
-      toast.success(mode === "create" ? "İşlem eklendi." : "İşlem güncellendi.")
-      setOpen(false)
-      router.refresh()
-    })
+      return
+    }
+    toast.success(isEditing ? "Tedavi güncellendi." : "Tedavi eklendi.")
+    setOpen(false)
+    if (!isEditing) form.reset({ staffId, treatmentType: "", defaultPrice: undefined })
   })
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) form.reset({ staffId, treatmentType: item?.treatmentType ?? "", defaultPrice: item?.defaultPrice ?? undefined })
+      }}
+    >
       <SheetTrigger asChild>
         {trigger ?? (
-          <Button size="sm">
+          <Button size="sm" variant="outline">
             <Plus />
-            İşlem Ekle
+            Tedavi Ekle
           </Button>
         )}
       </SheetTrigger>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+      <SheetContent>
         <SheetHeader>
-          <SheetTitle>{mode === "create" ? "İşlem Ekle" : "İşlemi Düzenle"}</SheetTitle>
-          <SheetDescription>Klinik fiyat listenize bir tedavi kalemi ekleyin.</SheetDescription>
+          <SheetTitle>{isEditing ? "Tedaviyi Düzenle" : "Yeni Tedavi Ekle"}</SheetTitle>
+          <SheetDescription>{staffName} için tedavi türü ve önerilen fiyat.</SheetDescription>
         </SheetHeader>
-        <div className="px-4 pb-4">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-            <FieldGroup>
-              <FormField
-                control={form.control}
-                name="treatmentType"
-                label="İşlem Türü"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TOOTH_TREATMENT_TYPE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="name"
-                label="Görünen Ad"
-                render={({ field }) => <Input {...field} placeholder="Örn. Kompozit Dolgu" />}
-              />
-              <FormField
-                control={form.control}
-                name="defaultPrice"
-                label="Standart Ücret (opsiyonel)"
-                render={({ field }) => (
-                  <MoneyInput value={field.value} onChange={field.onChange} placeholder="Belirlenmedi" />
-                )}
-              />
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <Checkbox
-                  checked={form.watch("isActive")}
-                  onCheckedChange={(checked) => form.setValue("isActive", checked === true)}
-                />
-                Aktif (Tedavi Ekle formunda görünür)
-              </label>
-            </FieldGroup>
-            <div className="bg-card sticky bottom-0 flex flex-col gap-3 border-t pt-4 pb-1">
-              <FormError message={formError} />
-              <Button type="submit" loading={isPending} className="w-full sm:w-fit">
-                Kaydet
-              </Button>
-            </div>
-          </form>
-        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6 px-4">
+          <FieldGroup>
+            <FormField
+              control={form.control}
+              name="treatmentType"
+              label="Tedavi Türü"
+              render={({ field }) => <Input {...field} placeholder="Örn. Botoks" />}
+            />
+            <FormField
+              control={form.control}
+              name="defaultPrice"
+              label="Önerilen Fiyat (opsiyonel)"
+              render={({ field }) => <MoneyInput value={field.value} onChange={field.onChange} />}
+            />
+          </FieldGroup>
+          <FormError message={form.formState.errors.root?.message ?? null} />
+          <SheetFooter>
+            <Button type="submit" loading={form.formState.isSubmitting}>
+              {isEditing ? "Kaydet" : "Ekle"}
+            </Button>
+          </SheetFooter>
+        </form>
       </SheetContent>
     </Sheet>
   )

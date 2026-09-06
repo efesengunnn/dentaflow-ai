@@ -1,13 +1,15 @@
 import { notFound } from "next/navigation"
 
 import { PatientDetailView } from "@/components/patients/patient-detail-view"
+import { getPatientSummaryForAI } from "@/lib/ai/queries"
 import { getAppointmentsForPatient } from "@/lib/appointments/queries"
 import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
-import { getPatientBalance, getPatientPayments } from "@/lib/payments/queries"
 import { getPatientActivities, getPatientById, getPatientOptions } from "@/lib/patients/queries"
+import { currentStaffHasPermission } from "@/lib/permissions/queries"
 import { getAssignableStaff } from "@/lib/staff/queries"
-import { getToothConditionsForPatient, getToothTreatmentsForPatient } from "@/lib/teeth/queries"
-import { getTreatmentCatalog } from "@/lib/treatment-catalog/queries"
+import type { TreatmentPlanActor } from "@/lib/treatment-plans/permissions"
+import { getPatientTreatmentPlans } from "@/lib/treatment-plans/queries"
+import { getTreatmentSeriesForPatientWithDetails } from "@/lib/treatments/queries"
 
 type PatientDetailPageProps = {
   params: Promise<{ id: string }>
@@ -25,11 +27,9 @@ export default async function PatientDetailPage({ params, searchParams }: Patien
     appointments,
     staffOptions,
     patientOptions,
-    toothConditions,
-    toothTreatments,
-    catalog,
-    balance,
-    payments,
+    treatmentSeries,
+    treatmentPlans,
+    hasFinancialAccess,
   ] = await Promise.all([
     getPatientById(id),
     getCurrentStaffMember(),
@@ -37,20 +37,33 @@ export default async function PatientDetailPage({ params, searchParams }: Patien
     getAppointmentsForPatient(id),
     getAssignableStaff(),
     getPatientOptions(),
-    getToothConditionsForPatient(id),
-    getToothTreatmentsForPatient(id),
-    getTreatmentCatalog(),
-    getPatientBalance(id),
-    getPatientPayments(id),
+    getTreatmentSeriesForPatientWithDetails(id),
+    getPatientTreatmentPlans(id),
+    currentStaffHasPermission("financial_access"),
   ])
 
   if (!patient) {
     notFound()
   }
 
+  const aiSummary = await getPatientSummaryForAI(id, hasFinancialAccess)
+
   const canManage = staffMember?.role !== "doctor"
-  const canManagePayments = staffMember?.role === "owner" || staffMember?.role === "secretary"
-  const canManageClinical = staffMember?.role === "owner" || staffMember?.role === "doctor"
+  const canManagePayments =
+    staffMember?.role === "owner" || staffMember?.role === "secretary" || staffMember?.role === "beauty_specialist"
+  // Sprint 28B (Tedavi Planı wizard, UI-only) — provider_share is owner-only,
+  // not even the provider themself; see TreatmentPlanItemCard.
+  const isOwner = staffMember?.role === "owner"
+  // Sprint 28C.1 (Flexible Delete & Audit) — passed down for UI affordance
+  // gating only (see lib/treatment-plans/permissions.ts's own doc comment);
+  // RLS + the Server Actions remain the actual security boundary. Falls back
+  // to the least-privileged clinical role when there's no session, matching
+  // the rest of this page's `staffMember?.role` guards.
+  const treatmentPlanActor: TreatmentPlanActor = {
+    staffId: staffMember?.userId ?? "",
+    role: staffMember?.role ?? "secretary",
+    hasFinancialAccess,
+  }
 
   return (
     <PatientDetailView
@@ -60,14 +73,13 @@ export default async function PatientDetailPage({ params, searchParams }: Patien
       staffOptions={staffOptions}
       patientOptions={patientOptions}
       canManage={canManage}
-      appointmentError={randevuHata}
-      toothConditions={toothConditions}
-      toothTreatments={toothTreatments}
-      catalog={catalog}
-      balance={balance}
-      payments={payments}
+      treatmentSeries={treatmentSeries}
       canManagePayments={canManagePayments}
-      canManageClinical={canManageClinical}
+      isOwner={isOwner}
+      treatmentPlanActor={treatmentPlanActor}
+      treatmentPlans={treatmentPlans}
+      appointmentError={randevuHata}
+      aiSummary={aiSummary}
     />
   )
 }

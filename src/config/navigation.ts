@@ -2,9 +2,11 @@ import {
   Building2,
   CalendarDays,
   LayoutDashboard,
+  Package,
   Plug,
   Settings,
   ShieldCheck,
+  Sparkles,
   Stethoscope,
   UserRound,
   Users,
@@ -43,16 +45,29 @@ export function isNavGroup(entry: NavEntry): entry is NavGroup {
 }
 
 /**
- * Single source of truth for the app sidebar. Flat by design — a nesting
- * group is only worth it once a genuinely related cluster of modules
- * exists under a label the user's own vocabulary would recognize.
- * `NavGroup`/`isNavGroup` stay in the type surface for that future case;
- * `mainNav` just doesn't use one now.
+ * Single source of truth for the app sidebar. Flat by design (IA decision,
+ * 2026-07-23): a "CRM" umbrella group over just Leads + Patients was internal
+ * software jargon with no meaning to a clinic user, and added a nesting
+ * level for zero real scanning benefit. If a genuinely related cluster of
+ * modules (Treatments, Packages, Payments, Follow-ups) arrives later, a
+ * group can be reintroduced then — under a label the user's own vocabulary
+ * would recognize, not a re-use of "CRM". `NavGroup`/`isNavGroup` stay in
+ * the type surface for that future case; `mainNav` just doesn't use one now.
+ *
+ * **Lead Management removed from navigation, Sprint 8.5 (soft remove).**
+ * Product decision: DentaFlow is a Clinic Operating System, not a CRM — its
+ * target clinics don't run a lead funnel/sales pipeline, so the module no
+ * longer belongs in Core. Only the nav entry is gone; the `/leads` routes,
+ * `lib/leads/*`, `components/leads/*`, and the `leads`/`lead_activities`
+ * tables are all untouched and still fully functional if reached directly —
+ * a deliberate soft removal so the module can return in a future Enterprise
+ * tier without rebuilding it. See `docs/CHANGELOG.md`'s Sprint 8.5 entry.
  */
 export const mainNav: NavEntry[] = [
   { title: "Panel", href: "/dashboard", icon: LayoutDashboard },
   { title: "Hastalar", href: "/patients", icon: UserRound },
   { title: "Randevular", href: "/appointments", icon: CalendarDays },
+  { title: "Paketler", href: "/packages", icon: Package, restrictedTo: ["owner"] },
   { title: "Personel", href: "/staff", icon: Users, restrictedTo: ["owner", "secretary"] },
   { title: "Ayarlar", href: "/settings", icon: Settings, restrictedTo: ["owner", "secretary"] },
 ];
@@ -71,6 +86,7 @@ export const settingsNav: NavLink[] = [
   { title: "Kullanıcılar", href: "/settings/users", icon: Users },
   { title: "Roller", href: "/settings/roles", icon: ShieldCheck },
   { title: "Tedavi Kataloğu", href: "/settings/treatments", icon: Stethoscope },
+  { title: "Yapay Zeka", href: "/settings/ai", icon: Sparkles },
   { title: "Entegrasyonlar", href: "/settings/integrations", icon: Plug },
 ];
 
@@ -97,6 +113,17 @@ function resolveLinkSegment(
     const suffix = pathname.slice(link.href.length + 1);
     if (suffix === "new") {
       return [{ title: link.title, href: link.href }, { title: "Yeni" }];
+    }
+    // A detail page's own sub-page, e.g. patients/[id]/treatment-plans/new —
+    // the detail segment keeps its real name/link, the sub-page gets its own
+    // final crumb instead of falling back to "Detay".
+    const subPageMatch = suffix.match(/^([^/]+)\/treatment-plans\/new$/);
+    if (subPageMatch) {
+      return [
+        { title: link.title, href: link.href },
+        { title: dynamicLabel ?? "Detay", href: `${link.href}/${subPageMatch[1]}` },
+        { title: "Paket / Tedavi Tanımla" },
+      ];
     }
     const trailingTitle = dynamicLabel ?? "Detay";
     return [{ title: link.title, href: link.href }, { title: trailingTitle }];

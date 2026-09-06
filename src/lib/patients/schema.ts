@@ -20,6 +20,10 @@ export const patientFormSchema = z
     appointmentStaffId: z.string().optional(),
     appointmentDate: z.string().optional(),
     appointmentTime: z.string().optional(),
+    // Founder decision 2026-07-28 — optional, same "Belirlenmedi" fee
+    // convention as the standalone appointment form's own treatment section.
+    treatmentType: z.string().trim().optional(),
+    totalFee: z.number().min(0, "Ücret negatif olamaz.").optional(),
   })
   .superRefine((data, ctx) => {
     if (!data.createAppointment) return
@@ -47,4 +51,6 @@ export const patientFormDefaults: PatientFormValues = {
   appointmentStaffId: "",
   appointmentDate: "",
   appointmentTime: "",
+  treatmentType: "",
+  totalFee: undefined,
 }

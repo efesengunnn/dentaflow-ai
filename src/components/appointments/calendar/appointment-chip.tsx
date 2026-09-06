@@ -1,3 +1,4 @@
+import { Wallet } from "lucide-react"
 import Link from "next/link"
 
 import { cn } from "@/lib/utils"
@@ -15,14 +16,26 @@ const STATUS_ACCENT: Record<AppointmentStatus, string> = {
 }
 
 /**
- * A secretary glancing at the calendar needs "what is this patient here
- * for" without opening anything: time + patient name, plus a truncated
- * third line combining İşlem (`reason`) and personel — both already fetched
- * by `AppointmentListRow`, no extra query.
+ * Sprint 15 — a secretary glancing at the calendar needs "what is this
+ * patient here for" without opening anything: time + patient name (as
+ * before) plus, on one more truncated line, İşlem (`reason`) and personel
+ * — both already fetched by `AppointmentListRow`, no extra query. Combined
+ * into a single line (not two) to keep chip height from ballooning inside
+ * Month view's `MAX_VISIBLE_PER_DAY` cells.
+ *
+ * Sprint 18 — when a treatment is linked, that third line switches to
+ * "Paket adı · N/Toplam Seans" (more useful at a glance than the generic
+ * reason/personel line) and a small wallet icon appears next to the time
+ * when the linked series has a balance due — still one line, chip height
+ * unchanged.
  */
 function AppointmentChip({ appointment }: { appointment: AppointmentListRow }) {
   const time = formatIstanbulTime(appointment.startsAt)
-  const detail = [appointment.reason, appointment.staffName].filter(Boolean).join(" · ")
+  const { linkedTreatment } = appointment
+  const hasBalanceDue = linkedTreatment !== null && linkedTreatment.remainingBalance !== null && linkedTreatment.remainingBalance > 0
+  const detail = linkedTreatment
+    ? `${linkedTreatment.treatmentType} · ${linkedTreatment.sessionNumber}/${linkedTreatment.totalSessions} Seans`
+    : [appointment.procedureName ?? appointment.reason, appointment.staffName].filter(Boolean).join(" · ")
 
   return (
     <Link
@@ -32,7 +45,10 @@ function AppointmentChip({ appointment }: { appointment: AppointmentListRow }) {
         STATUS_ACCENT[appointment.status],
       )}
     >
-      <span className="flex items-center gap-1 font-mono font-medium">{time}</span>
+      <span className="flex items-center gap-1 font-mono font-medium">
+        {time}
+        {hasBalanceDue && <Wallet className="size-3 shrink-0 text-warning" aria-label="Tahsilat bekliyor" />}
+      </span>
       <span className="truncate" title={appointment.patientName}>
         {appointment.patientName}
       </span>

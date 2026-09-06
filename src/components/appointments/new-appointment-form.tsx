@@ -10,24 +10,15 @@ function NewAppointmentForm({
   staffOptions,
   defaultPatientId,
   defaultDate,
-  defaultTreatmentId,
 }: {
   patientOptions: PatientOption[]
   staffOptions: AssignableStaff[]
   defaultPatientId?: string
   /** Pre-fills "Tarih" — the calendar's "click an empty day" flow (Sprint 11) so the user never re-picks a date they already chose by clicking it. */
   defaultDate?: string
-  /** Pre-checks one treatment in "Bağlı Tedaviler" — the tooth detail sheet's "Bu Tedavi İçin Randevu Oluştur" shortcut. */
-  defaultTreatmentId?: string
 }) {
   const defaultValues =
-    defaultPatientId || defaultDate || defaultTreatmentId
-      ? {
-          patientId: defaultPatientId,
-          date: defaultDate,
-          treatmentIds: defaultTreatmentId ? [defaultTreatmentId] : undefined,
-        }
-      : undefined
+    defaultPatientId || defaultDate ? { patientId: defaultPatientId, date: defaultDate } : undefined
 
   return (
     <AppointmentForm

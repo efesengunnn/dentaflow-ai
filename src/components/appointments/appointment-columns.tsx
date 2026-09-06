@@ -3,7 +3,9 @@
 import type { ColumnDef } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
+import { Package, Wallet } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import { TruncatedCell } from "@/components/shared/truncated-cell"
 import { formatTurkishPhoneDisplay } from "@/lib/format/phone"
 import type { AppointmentListRow } from "@/lib/appointments/queries"
@@ -48,6 +50,29 @@ const appointmentColumns: ColumnDef<AppointmentListRow>[] = [
     accessorKey: "reason",
     header: "Sebep",
     cell: ({ row }) => <TruncatedCell value={row.original.reason} maxWidthClassName="max-w-48" />,
+  },
+  {
+    id: "treatment",
+    header: "Tedavi",
+    cell: ({ row }) => {
+      const { linkedTreatment, procedureName } = row.original
+      if (!linkedTreatment && !procedureName) return <span className="text-muted-foreground">—</span>
+      const hasBalanceDue = linkedTreatment !== null && linkedTreatment.remainingBalance !== null && linkedTreatment.remainingBalance > 0
+      return (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge variant="secondary" className="gap-1" title={linkedTreatment?.treatmentType ?? procedureName ?? undefined}>
+            <Package />
+            {linkedTreatment ? `${linkedTreatment.sessionNumber}/${linkedTreatment.totalSessions} Seans` : procedureName}
+          </Badge>
+          {hasBalanceDue && (
+            <Badge variant="warning" className="gap-1">
+              <Wallet />
+              Tahsilat Bekliyor
+            </Badge>
+          )}
+        </div>
+      )
+    },
   },
   {
     accessorKey: "status",

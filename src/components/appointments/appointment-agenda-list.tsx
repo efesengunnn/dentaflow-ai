@@ -1,6 +1,6 @@
 "use client"
 
-import { CalendarClock, CalendarX2, Loader2Icon, MoreVertical, Pencil, Plus, Trash2, UserRound } from "lucide-react"
+import { CalendarClock, CalendarX2, Loader2Icon, MoreVertical, Package, Pencil, Plus, Stethoscope, Trash2, UserRound, Wallet } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
@@ -17,6 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -32,6 +33,7 @@ import { appointmentStatusUpdatePayload } from "@/lib/appointments/schema"
 import type { PatientOption } from "@/lib/patients/queries"
 import type { AssignableStaff } from "@/lib/staff/queries"
 import { getInitials } from "@/lib/utils"
+import { AddPaymentSheet } from "@/components/treatments/add-payment-sheet"
 import { AppointmentEditSheet } from "./appointment-edit-sheet"
 import { AppointmentStatusBadge } from "./appointment-status-badge"
 
@@ -64,6 +66,7 @@ function AppointmentAgendaList({
   emptyDescription,
   newAppointmentHref,
   linkTarget = "patient",
+  canManagePayments = false,
   patientOptions,
   staffOptions,
 }: {
@@ -82,6 +85,16 @@ function AppointmentAgendaList({
    * boundary — passing one crashes every patient page that has appointments.
    */
   linkTarget?: "patient" | "appointment"
+  /**
+   * Founder feedback 2026-07-28: recording a payment required opening the
+   * linked treatment specifically — this row already shows "Tahsilat
+   * Bekliyor" as a passive badge, with no way to act on it. Mirrors the
+   * quick-action `TodaysAppointmentsCard` already has; still fundamentally
+   * a payment against the linked treatment series, just reachable without
+   * leaving Randevular first. Optional/defaulted so existing call sites
+   * that haven't threaded a permission flag through yet keep compiling.
+   */
+  canManagePayments?: boolean
   /**
    * Founder feedback 2026-07-31: "Randevuyu Düzenle" used to just navigate
    * to `/appointments/[id]` and make you find the real edit trigger a
@@ -175,8 +188,44 @@ function AppointmentAgendaList({
                     {appointment.staffName} · {formatTurkishPhoneDisplay(appointment.patientPhone)}
                     {appointment.reason ? ` · ${appointment.reason}` : ""}
                   </span>
+                  {(appointment.linkedTreatment || appointment.procedureName) && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="secondary" className="gap-1">
+                        <Package />
+                        {appointment.linkedTreatment
+                          ? `${appointment.linkedTreatment.treatmentType} · ${appointment.linkedTreatment.sessionNumber}/${appointment.linkedTreatment.totalSessions} Seans`
+                          : appointment.procedureName}
+                      </Badge>
+                      {appointment.linkedTreatment &&
+                        appointment.linkedTreatment.remainingBalance !== null &&
+                        appointment.linkedTreatment.remainingBalance > 0 && (
+                          <Badge variant="warning" className="gap-1">
+                            <Wallet />
+                            Tahsilat Bekliyor
+                          </Badge>
+                        )}
+                    </div>
+                  )}
                 </div>
                 <AppointmentStatusBadge status={appointment.status} />
+                {canManagePayments &&
+                  appointment.linkedTreatment &&
+                  appointment.linkedTreatment.remainingBalance !== null &&
+                  appointment.linkedTreatment.remainingBalance > 0 && (
+                    <AddPaymentSheet
+                      seriesId={appointment.linkedTreatment.seriesId}
+                      remainingBalance={appointment.linkedTreatment.remainingBalance}
+                      title="Tahsilat Yap"
+                      description={`${appointment.linkedTreatment.treatmentType} paketi için tahsilat kaydedin.`}
+                      trigger={
+                        <Button size="sm" variant="outline">
+                          <Wallet />
+                          Tahsilat
+                        </Button>
+                      }
+                      onSuccess={() => router.refresh()}
+                    />
+                  )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon-sm" aria-label="Randevu işlemleri">
@@ -208,6 +257,12 @@ function AppointmentAgendaList({
                         </Link>
                       </DropdownMenuItem>
                     )}
+                    <DropdownMenuItem asChild>
+                      <Link href={`/patients/${appointment.patientId}`}>
+                        <Stethoscope />
+                        Tedaviyi Aç
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       variant="destructive"
                       onSelect={(event) => {

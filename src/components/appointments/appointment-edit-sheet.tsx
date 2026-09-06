@@ -1,9 +1,11 @@
 "use client"
 
 import { Pencil } from "lucide-react"
+import { useRouter } from "next/navigation"
 import type { ReactNode } from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
+import { EditSeriesSheet } from "@/components/treatments/edit-series-sheet"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -18,6 +20,8 @@ import type { AppointmentStatus } from "@/lib/appointments/constants"
 import { localDateToDateString } from "@/lib/format/date"
 import type { PatientOption } from "@/lib/patients/queries"
 import type { AssignableStaff } from "@/lib/staff/queries"
+import { fetchTreatmentSeriesDetail } from "@/lib/treatments/actions"
+import type { TreatmentSeriesDetail } from "@/lib/treatments/queries"
 import { AppointmentForm } from "./appointment-form"
 
 /**
@@ -32,6 +36,7 @@ type EditableAppointment = {
   startsAt: string
   status: AppointmentStatus
   reason: string | null
+  linkedTreatment: { seriesId: string } | null
 }
 
 function AppointmentEditSheet({
@@ -59,13 +64,31 @@ function AppointmentEditSheet({
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) {
+  const router = useRouter()
   const isControlled = controlledOpen !== undefined
   const [internalOpen, setInternalOpen] = useState(false)
   const open = isControlled ? controlledOpen : internalOpen
   const setOpen = isControlled ? (controlledOnOpenChange ?? (() => {})) : setInternalOpen
+  const [seriesDetail, setSeriesDetail] = useState<TreatmentSeriesDetail | null>(null)
 
   const startsAtDate = new Date(appointment.startsAt)
   const time = `${String(startsAtDate.getHours()).padStart(2, "0")}:${String(startsAtDate.getMinutes()).padStart(2, "0")}`
+
+  // Founder decision 2026-07-31 — editing a linked treatment's package-level
+  // fields (İşlem/Seans/Ücret) shouldn't require leaving the appointment
+  // edit panel and going back to the patient card. Fetched only while the
+  // Sheet is open, reusing `EditSeriesSheet` as-is (no parallel edit path)
+  // rather than duplicating its form fields/validation here.
+  useEffect(() => {
+    if (!open || !appointment.linkedTreatment) return
+    let cancelled = false
+    fetchTreatmentSeriesDetail(appointment.linkedTreatment.seriesId).then((detail) => {
+      if (!cancelled) setSeriesDetail(detail)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open, appointment.linkedTreatment])
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -87,6 +110,23 @@ function AppointmentEditSheet({
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-4 px-4 pb-4">
+          {seriesDetail && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/40 p-3">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Bağlı Tedavi</p>
+                <p className="truncate text-sm font-medium">
+                  {seriesDetail.treatmentType} ({seriesDetail.completedSessions}/{seriesDetail.totalSessions} Seans)
+                </p>
+              </div>
+              <EditSeriesSheet
+                seriesId={seriesDetail.id}
+                treatmentType={seriesDetail.treatmentType}
+                totalSessions={seriesDetail.totalSessions}
+                totalFee={seriesDetail.totalFee}
+                onSuccess={() => router.refresh()}
+              />
+            </div>
+          )}
           <AppointmentForm
             mode="edit"
             defaultValues={{

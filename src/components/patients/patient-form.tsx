@@ -1,7 +1,7 @@
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 
@@ -16,6 +16,8 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { FieldGroup } from "@/components/ui/field"
 import { FormField } from "@/components/ui/form-field"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { MoneyInput } from "@/components/ui/money-input"
 import { Textarea } from "@/components/ui/textarea"
 import { TimeSelect } from "@/components/ui/time-select"
 import { dateStringToLocalDate, localDateToDateString } from "@/lib/format/date"
@@ -26,6 +28,8 @@ import {
   type PatientFormValues,
 } from "@/lib/patients/schema"
 import type { AssignableStaff } from "@/lib/staff/queries"
+import { fetchCatalogForStaff } from "@/lib/treatment-catalog/actions"
+import type { CatalogItem } from "@/lib/treatment-catalog/queries"
 
 type PatientFormProps = {
   mode: "create" | "edit"
@@ -34,7 +38,7 @@ type PatientFormProps = {
   onSubmit: (values: PatientFormValues) => Promise<PatientActionState>
   onSuccess?: (state: Extract<PatientActionState, { success: true }>) => void
   submitLabel?: string
-  /** Hides "Aynı anda randevu oluştur" for the appointment form's inline "+ Yeni Hasta" Sheet, where creating an appointment at the same time is already the reason this form is open. */
+  /** Sprint 14 — hides "Aynı anda randevu oluştur" for the appointment form's inline "+ Yeni Hasta" Sheet, where creating an appointment at the same time is already the reason this form is open. */
   hideAppointmentOption?: boolean
 }
 
@@ -62,6 +66,46 @@ function PatientForm({
   }))
 
   const createAppointment = form.watch("createAppointment")
+  const appointmentStaffId = form.watch("appointmentStaffId")
+
+  // Founder decision 2026-07-28 — same catalog picker as the standalone
+  // appointment form's "+ Tedavi Tanımla", scoped to whichever personel is
+  // chosen for the auto-created appointment. Fetched on demand once a
+  // personel is actually picked, not on every keystroke elsewhere in the form.
+  const [catalog, setCatalog] = useState<CatalogItem[]>([])
+  const [loadedForStaffId, setLoadedForStaffId] = useState<string | null>(null)
+  const [isCustomTreatment, setIsCustomTreatment] = useState(true)
+  const [selectedCatalogId, setSelectedCatalogId] = useState<string | undefined>(undefined)
+
+  useEffect(() => {
+    if (!appointmentStaffId || loadedForStaffId === appointmentStaffId) return
+    let cancelled = false
+    fetchCatalogForStaff(appointmentStaffId).then((rows) => {
+      if (cancelled) return
+      setCatalog(rows)
+      setLoadedForStaffId(appointmentStaffId)
+      setIsCustomTreatment(true)
+      setSelectedCatalogId(undefined)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [appointmentStaffId, loadedForStaffId])
+
+  function handleCatalogSelect(value: string) {
+    setSelectedCatalogId(value)
+    const item = catalog.find((entry) => entry.id === value)
+    if (!item) return
+    setIsCustomTreatment(false)
+    form.setValue("treatmentType", item.treatmentType)
+    if (item.defaultPrice !== null) form.setValue("totalFee", item.defaultPrice)
+  }
+
+  function handleCustomTreatment() {
+    setSelectedCatalogId(undefined)
+    setIsCustomTreatment(true)
+    form.setValue("treatmentType", "")
+  }
 
   async function handlePhoneBlur(phone: string) {
     if (mode !== "create") return
@@ -188,6 +232,43 @@ function PatientForm({
                     render={({ field }) => <TimeSelect value={field.value} onChange={field.onChange} />}
                   />
                 </div>
+
+                {catalog.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <Label>İşlem (opsiyonel — Personelin Tedavi Kataloğu)</Label>
+                    <Combobox
+                      options={catalog.map((item) => ({
+                        value: item.id,
+                        label:
+                          item.defaultPrice !== null
+                            ? `${item.treatmentType} · ${item.defaultPrice.toLocaleString("tr-TR")} TRY`
+                            : item.treatmentType,
+                      }))}
+                      value={selectedCatalogId}
+                      onChange={handleCatalogSelect}
+                      placeholder="Kayıtlı tedavilerden seçin veya yazarak arayın"
+                      searchPlaceholder="Tedavi ara..."
+                      onCreateNew={handleCustomTreatment}
+                      createNewLabel="Diğer (elle yaz)"
+                    />
+                  </div>
+                )}
+                {(isCustomTreatment || catalog.length === 0) && (
+                  <FormField
+                    control={form.control}
+                    name="treatmentType"
+                    label={catalog.length > 0 ? "İşlem (elle yazılan, opsiyonel)" : "İşlem (opsiyonel)"}
+                    render={({ field }) => <Input {...field} placeholder="Örn. Botoks" />}
+                  />
+                )}
+                <FormField
+                  control={form.control}
+                  name="totalFee"
+                  label="Ücret (opsiyonel)"
+                  render={({ field }) => (
+                    <MoneyInput value={field.value} onChange={field.onChange} placeholder="Belirlenmedi" />
+                  )}
+                />
               </div>
             )}
           </div>

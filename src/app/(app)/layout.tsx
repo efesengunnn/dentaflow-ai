@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { AIPanelLauncher } from "@/components/ai/ai-panel-launcher";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { BreadcrumbProvider } from "@/components/layout/breadcrumb-context";
@@ -46,6 +47,7 @@ export default async function AppLayout({
           </main>
         </SidebarInset>
       </BreadcrumbProvider>
+      <AIPanelLauncher />
     </SidebarProvider>
   );
 }

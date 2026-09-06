@@ -1,78 +1,102 @@
 "use client"
 
 import { Pencil, Stethoscope } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useTransition } from "react"
+import { toast } from "sonner"
 
-import { EntityDeleteDialog } from "@/components/shared/entity-delete-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
-import { Badge } from "@/components/ui/badge"
-import { createCatalogItem, removeCatalogItem, updateCatalogItem } from "@/lib/treatment-catalog/actions"
-import { TOOTH_TREATMENT_TYPE_LABELS } from "@/lib/teeth/constants"
+import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
+import { getInitials } from "@/lib/utils"
+import { setCatalogItemActive } from "@/lib/treatment-catalog/actions"
 import type { CatalogItem } from "@/lib/treatment-catalog/queries"
 import { TreatmentCatalogItemSheet } from "./treatment-catalog-item-sheet"
 
-function TreatmentCatalogSection({ items }: { items: CatalogItem[] }) {
-  const router = useRouter()
+function formatPrice(price: number | null): string {
+  return price === null ? "Belirlenmedi" : `${price.toLocaleString("tr-TR")} TRY`
+}
 
+function TreatmentCatalogSection({
+  staffId,
+  staffName,
+  items,
+}: {
+  staffId: string
+  staffName: string
+  items: CatalogItem[]
+}) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
-        <TreatmentCatalogItemSheet mode="create" onSubmit={createCatalogItem} />
+    <div className="flex flex-col gap-3 rounded-2xl border p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+            {getInitials(staffName)}
+          </div>
+          <p className="font-medium">{staffName}</p>
+        </div>
+        <TreatmentCatalogItemSheet staffId={staffId} staffName={staffName} />
       </div>
 
       {items.length === 0 ? (
         <EmptyState
+          compact
           icon={Stethoscope}
-          title="Henüz işlem tanımlı değil"
-          description="Klinik fiyat listenize ilk işlemi ekleyin."
+          title="Henüz tedavi eklenmedi"
+          description="Bu personel için bir tedavi eklediğinizde burada listelenecek."
         />
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col divide-y">
           {items.map((item) => (
-            <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{item.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {TOOTH_TREATMENT_TYPE_LABELS[item.treatmentType]}
-                    {item.defaultPrice !== null ? ` · ${item.defaultPrice.toLocaleString("tr-TR")} TRY` : ""}
-                  </p>
-                </div>
-                {!item.isActive && <Badge variant="secondary">Pasif</Badge>}
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <TreatmentCatalogItemSheet
-                  mode="edit"
-                  defaultValues={{
-                    treatmentType: item.treatmentType,
-                    name: item.name,
-                    defaultPrice: item.defaultPrice ?? undefined,
-                    isActive: item.isActive,
-                  }}
-                  onSubmit={(values) => updateCatalogItem(item.id, values)}
-                  trigger={
-                    <button type="button" className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Düzenle">
-                      <Pencil className="size-4" />
-                    </button>
-                  }
-                />
-                <EntityDeleteDialog
-                  title="İşlem silinsin mi?"
-                  description={`"${item.name}" fiyat listesinden kaldırılacak. Bu işlemi kullanan geçmiş tedavi kayıtları etkilenmez.`}
-                  onConfirm={async () => {
-                    const result = await removeCatalogItem(item.id)
-                    router.refresh()
-                    return result
-                  }}
-                  triggerLabel=""
-                  triggerVariant="ghost"
-                  triggerSize="icon"
-                />
-              </div>
-            </div>
+            <CatalogItemRow key={item.id} staffId={staffId} staffName={staffName} item={item} />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function CatalogItemRow({
+  staffId,
+  staffName,
+  item,
+}: {
+  staffId: string
+  staffName: string
+  item: CatalogItem
+}) {
+  const [isPending, startTransition] = useTransition()
+
+  function handleToggle(checked: boolean) {
+    startTransition(async () => {
+      const result = await setCatalogItemActive(item.id, checked)
+      if (result?.error) toast.error(result.error)
+    })
+  }
+
+  return (
+    <div className="flex items-center gap-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <p className={item.isActive ? "font-medium" : "text-muted-foreground font-medium line-through"}>
+          {item.treatmentType}
+        </p>
+        <p className="text-muted-foreground text-xs">{formatPrice(item.defaultPrice)}</p>
+      </div>
+      <TreatmentCatalogItemSheet
+        staffId={staffId}
+        staffName={staffName}
+        item={item}
+        trigger={
+          <Button variant="ghost" size="icon-sm" aria-label={`${item.treatmentType} düzenle`}>
+            <Pencil />
+          </Button>
+        }
+      />
+      <Switch
+        checked={item.isActive}
+        onCheckedChange={handleToggle}
+        disabled={isPending}
+        aria-label={`${item.treatmentType} aktif`}
+      />
     </div>
   )
 }

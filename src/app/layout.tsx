@@ -34,7 +34,7 @@ const fraunces = Fraunces({
 
 export const metadata: Metadata = {
   title: "DentaFlow AI",
-  description: "Diş klinikleri için modern yönetim platformu.",
+  description: "Estetik klinikleri için yapay zeka destekli yönetim platformu.",
 };
 
 export default function RootLayout({

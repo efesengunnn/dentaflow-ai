@@ -16,6 +16,7 @@ import { findPatientByPhone, type PatientOption } from "@/lib/patients/queries"
 import { patientFormSchema, type PatientFormValues } from "@/lib/patients/schema"
 import type { Database } from "@/lib/supabase/database.types"
 import { createClient } from "@/lib/supabase/server"
+import { createTreatmentPlan } from "@/lib/treatment-plans/actions"
 import { flattenZodError } from "@/lib/validation/zod"
 
 type PatientActivityInsert = Database["public"]["Tables"]["patient_activities"]["Insert"]
@@ -115,7 +116,19 @@ export async function createPatient(values: PatientFormValues): Promise<PatientA
   // the moment the page loads, so nothing about it is hidden by not
   // redirecting to `/appointments/[id]` instead.
   if (result.values.createAppointment) {
-    // Unlike a standalone appointment submission, the patient is already
+    // Founder decision 2026-07-28 — a treatment picked here is always a
+    // single, standalone booking (not a multi-session package; that still
+    // needs the full treatment-plan builder), same as filling only
+    // İşlem/Ücret used to do in the old standalone appointment mode.
+    // Sprint 30: that mode was removed from the appointment form itself, so
+    // this quick-create path now creates its own 1-item plan the same way
+    // the appointment Sheet's inline builder does, then links it — one
+    // unified "an appointment only ever links to an already-resolved plan
+    // item" rule, no separate scalar-field code path left anywhere.
+    const treatmentType = result.values.treatmentType?.trim()
+    const appointmentStaffId = result.values.appointmentStaffId ?? ""
+
+    // Unlike the standalone appointment flow, the patient is already
     // committed by this point — a *thrown* error here (network blip, an
     // unexpected Supabase error) must never be allowed to propagate
     // uncaught, or the founder is left with a silently-created patient and
@@ -126,13 +139,34 @@ export async function createPatient(values: PatientFormValues): Promise<PatientA
     // by the redirects that follow it.
     let appointmentResult: CreateAppointmentResult | undefined
     try {
-      appointmentResult = await insertAppointment({
-        ...appointmentFormDefaults,
-        patientId: result.patient.id,
-        staffId: result.values.appointmentStaffId ?? "",
-        date: result.values.appointmentDate ?? "",
-        time: result.values.appointmentTime ?? "",
-      })
+      let treatmentPlanId: string | undefined
+      let treatmentPlanItemId: string | undefined
+      let planError: string | undefined
+      if (treatmentType) {
+        const planResult = await createTreatmentPlan({
+          patientId: result.patient.id,
+          planName: treatmentType,
+          items: [{ providerId: appointmentStaffId, treatmentName: treatmentType, sessionCount: 1, unitPrice: result.values.totalFee }],
+        })
+        if (planResult && "error" in planResult) {
+          planError = planResult.error
+        } else if (planResult) {
+          treatmentPlanId = planResult.planId
+          treatmentPlanItemId = planResult.itemIds[0]
+        }
+      }
+
+      appointmentResult = planError
+        ? { error: planError }
+        : await insertAppointment({
+            ...appointmentFormDefaults,
+            patientId: result.patient.id,
+            staffId: appointmentStaffId,
+            date: result.values.appointmentDate ?? "",
+            time: result.values.appointmentTime ?? "",
+            treatmentPlanId,
+            treatmentPlanItemId,
+          })
     } catch {
       appointmentResult = undefined
     }
@@ -146,6 +180,9 @@ export async function createPatient(values: PatientFormValues): Promise<PatientA
     }
     if ("error" in appointmentResult) {
       redirect(`/patients/${result.patient.id}?randevuHata=${encodeURIComponent(appointmentResult.error)}`)
+    }
+    if (appointmentResult.treatmentWarning) {
+      redirect(`/patients/${result.patient.id}?randevuHata=${encodeURIComponent(appointmentResult.treatmentWarning)}`)
     }
   }
 

@@ -5,7 +5,7 @@ import { getPatientOptions } from "@/lib/patients/queries"
 import { getAssignableStaff } from "@/lib/staff/queries"
 
 type NewAppointmentPageProps = {
-  searchParams: Promise<{ patientId?: string; date?: string; treatmentId?: string }>
+  searchParams: Promise<{ patientId?: string; date?: string }>
 }
 
 /**
@@ -16,9 +16,7 @@ type NewAppointmentPageProps = {
  * different staff on different visits, so "Sağlayıcı" is always chosen fresh
  * per appointment (see docs/DATABASE.md, "Sorumlu Personel" removal). Sprint
  * 11: `?date=` prefills "Tarih" — how the calendar's empty-day-list empty
- * state arrives here. `?treatmentId=` pre-selects a planned tooth treatment
- * in "Bağlı Tedaviler" — how the tooth detail sheet's "Bu Tedavi İçin
- * Randevu Oluştur" shortcut arrives here.
+ * state arrives here.
  */
 export default async function NewAppointmentPage({ searchParams }: NewAppointmentPageProps) {
   const params = await searchParams
@@ -33,7 +31,6 @@ export default async function NewAppointmentPage({ searchParams }: NewAppointmen
         staffOptions={staffOptions}
         defaultPatientId={params.patientId}
         defaultDate={params.date}
-        defaultTreatmentId={params.treatmentId}
       />
     </PageContainer>
   )

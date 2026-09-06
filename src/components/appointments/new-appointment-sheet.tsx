@@ -1,5 +1,7 @@
 "use client"
 
+import { toast } from "sonner"
+
 import {
   Sheet,
   SheetContent,
@@ -51,6 +53,7 @@ function NewAppointmentSheet({
   async function handleSubmit(values: AppointmentFormValues): Promise<AppointmentActionState> {
     const result = await insertAppointment(values)
     if ("error" in result) return result
+    if (result.treatmentWarning) toast.error(result.treatmentWarning)
     return { success: true }
   }
 

@@ -5,6 +5,8 @@ import {
 } from "@/lib/appointments/constants"
 import { sanitizeSearchTerm } from "@/lib/supabase/query-helpers"
 import { createClient } from "@/lib/supabase/server"
+import { getSeriesRemainingBalances } from "@/lib/treatments/queries"
+import type { TreatmentLifecycleStatus } from "@/lib/treatments/constants"
 
 export type AppointmentListFilters = {
   search?: string
@@ -14,6 +16,27 @@ export type AppointmentListFilters = {
   dateFrom?: string
   dateTo?: string
   page?: number
+}
+
+/**
+ * Non-null whenever this appointment has a treatment session attached
+ * (Sprint 13's "+ Tedavi Tanımla"), regardless of whether that session has
+ * since been completed — feeds the "Paket adı / N. Seans" and "Tahsilat
+ * Bekliyor" info shown on appointment cards (Sprint 18: Takvim, Liste,
+ * Bugünkü Randevular) and the appointment detail page's "Hızlı İşlemler" /
+ * completion-suggestion banner. Same shape as `lib/dashboard/queries.ts`'s
+ * `DashboardAppointmentRow.linkedTreatment` — kept as one exported type so
+ * both modules describe the same thing.
+ */
+export type AppointmentLinkedTreatment = {
+  seriesId: string
+  treatmentType: string
+  sessionNumber: number
+  totalSessions: number
+  /** `null` — fee not set yet ("Ücret Belirlenmedi"); never a fake `0`. */
+  remainingBalance: number | null
+  /** The linked session's own status — lets a consumer tell "still pending" apart from "already completed/cancelled" without a second lookup. */
+  sessionStatus: TreatmentLifecycleStatus
 }
 
 export type AppointmentListRow = {
@@ -28,6 +51,16 @@ export type AppointmentListRow = {
   endsAt: string
   status: AppointmentStatus
   createdAt: string
+  linkedTreatment: AppointmentLinkedTreatment | null
+  /**
+   * Sprint 30.3 — the new-system equivalent of `linkedTreatment.treatmentType`:
+   * the linked `treatment_plan_items.treatment_name` ("Tanımlanmış Paket"),
+   * or `standalone_treatment_name` ("Tek Seans / Tek İşlem") when neither a
+   * plan item nor a legacy series is linked. Never both a plan item and
+   * standalone name at once (enforced by `appointmentFormSchema`). `null`
+   * only for a genuinely treatment-less appointment.
+   */
+  procedureName: string | null
 }
 
 export type AppointmentListResult = {
@@ -38,7 +71,7 @@ export type AppointmentListResult = {
 }
 
 const APPOINTMENT_LIST_SELECT =
-  "id, patient_id, staff_id, reason, starts_at, ends_at, status, created_at, patient:patients!appointments_patient_id_fkey(full_name, phone), provider:staff_members!appointments_staff_id_fkey(full_name)"
+  "id, patient_id, staff_id, reason, starts_at, ends_at, status, created_at, standalone_treatment_name, patient:patients!appointments_patient_id_fkey(full_name, phone), provider:staff_members!appointments_staff_id_fkey(full_name), treatments!treatments_appointment_id_fkey(series_id, session_number, status, series:treatment_series(treatment_type, total_sessions)), treatment_plan_item:treatment_plan_items!appointments_treatment_plan_item_id_fkey(treatment_name)"
 
 type RawAppointmentListRow = {
   id: string
@@ -49,11 +82,59 @@ type RawAppointmentListRow = {
   ends_at: string
   status: AppointmentStatus
   created_at: string
+  standalone_treatment_name: string | null
   patient: { full_name: string; phone: string } | null
   provider: { full_name: string } | null
+  treatments: {
+    series_id: string
+    session_number: number
+    status: TreatmentLifecycleStatus
+    series: { treatment_type: string; total_sessions: number } | null
+  }[] | null
+  treatment_plan_item: { treatment_name: string } | null
 }
 
-function mapAppointmentListRow(row: RawAppointmentListRow): AppointmentListRow {
+/**
+ * The treatment row tied to this appointment, regardless of its own status
+ * (active/completed/cancelled) — only `voided` is excluded, matching the
+ * codebase's existing convention that a voided treatment "never represents a
+ * real event" (see `TREATMENT_STATUS_OPTIONS`). Deliberately NOT filtered to
+ * `status === "active"`: once a linked session is completed (via
+ * `completeSession`), it must stay visible on the appointment's own cards —
+ * losing the badge/quick-actions the moment a session finishes would be
+ * backwards.
+ */
+function findLinkedTreatment(row: RawAppointmentListRow) {
+  return (row.treatments ?? []).find((treatment) => treatment.status !== "voided")
+}
+
+function activeLinkedTreatmentSeriesId(row: RawAppointmentListRow): string | null {
+  return findLinkedTreatment(row)?.series_id ?? null
+}
+
+/**
+ * `remainingBalanceBySeriesId` is omitted by callers that don't render the
+ * balance-dependent badge/action (export, Patient Card's Randevular list) —
+ * those rows simply get `remainingBalance: null`-equivalent-safe
+ * `linkedTreatment` info without the extra batched lookup their surface
+ * doesn't need.
+ */
+function mapAppointmentListRow(
+  row: RawAppointmentListRow,
+  remainingBalanceBySeriesId: Map<string, number | null> = new Map(),
+): AppointmentListRow {
+  const linked = findLinkedTreatment(row)
+  const linkedTreatment: AppointmentLinkedTreatment | null = linked
+    ? {
+        seriesId: linked.series_id,
+        treatmentType: linked.series?.treatment_type ?? "",
+        sessionNumber: linked.session_number,
+        totalSessions: linked.series?.total_sessions ?? 1,
+        remainingBalance: remainingBalanceBySeriesId.get(linked.series_id) ?? null,
+        sessionStatus: linked.status,
+      }
+    : null
+
   return {
     id: row.id,
     patientId: row.patient_id,
@@ -66,6 +147,8 @@ function mapAppointmentListRow(row: RawAppointmentListRow): AppointmentListRow {
     endsAt: row.ends_at,
     status: row.status,
     createdAt: row.created_at,
+    linkedTreatment,
+    procedureName: row.treatment_plan_item?.treatment_name ?? row.standalone_treatment_name ?? linkedTreatment?.treatmentType ?? null,
   }
 }
 
@@ -124,8 +207,12 @@ export async function getAppointments(
   const { data, count, error } = await query
   if (error) throw error
 
+  const rows = data ?? []
+  const seriesIds = rows.map(activeLinkedTreatmentSeriesId).filter((id): id is string => id !== null)
+  const balances = await getSeriesRemainingBalances(seriesIds)
+
   return {
-    rows: (data ?? []).map(mapAppointmentListRow),
+    rows: rows.map((row) => mapAppointmentListRow(row, balances)),
     total: count ?? 0,
     page,
     pageSize: APPOINTMENTS_PAGE_SIZE,
@@ -161,7 +248,7 @@ export async function getAllAppointmentsForExport(
   const { data, error } = await query
   if (error) throw error
 
-  return (data ?? []).map(mapAppointmentListRow)
+  return (data ?? []).map((row) => mapAppointmentListRow(row))
 }
 
 export type AppointmentDetail = {
@@ -176,6 +263,14 @@ export type AppointmentDetail = {
   status: AppointmentStatus
   createdAt: string
   updatedAt: string
+  /**
+   * Just enough to know a treatment is attached and which session it is —
+   * Sprint 18's "Hızlı İşlemler" fetches the full `TreatmentSeriesDetail`
+   * separately (only for the one series a single appointment page cares
+   * about), so this stays a lightweight id/number pair, not the fuller
+   * `AppointmentLinkedTreatment` list-card shape.
+   */
+  linkedTreatment: { seriesId: string; sessionNumber: number } | null
 }
 
 export async function getAppointmentById(id: string): Promise<AppointmentDetail | null> {
@@ -183,13 +278,20 @@ export async function getAppointmentById(id: string): Promise<AppointmentDetail 
   const { data, error } = await supabase
     .from("appointments")
     .select(
-      "id, patient_id, staff_id, reason, starts_at, status, created_at, updated_at, patient:patients!appointments_patient_id_fkey(full_name, phone), provider:staff_members!appointments_staff_id_fkey(full_name)",
+      "id, patient_id, staff_id, reason, starts_at, status, created_at, updated_at, patient:patients!appointments_patient_id_fkey(full_name, phone), provider:staff_members!appointments_staff_id_fkey(full_name), treatments!treatments_appointment_id_fkey(series_id, session_number, status)",
     )
     .eq("id", id)
     .is("deleted_at", null)
     .single()
 
   if (error || !data) return null
+
+  // Not filtered to `status === "active"` — see `findLinkedTreatment` above:
+  // a completed session must stay linked so "Hızlı İşlemler" and the
+  // completion-suggestion banner still find it after `completeSession` runs.
+  const linkedTreatment = (
+    data.treatments as { series_id: string; session_number: number; status: TreatmentLifecycleStatus }[] | null
+  )?.find((treatment) => treatment.status !== "voided")
 
   return {
     id: data.id,
@@ -203,6 +305,9 @@ export async function getAppointmentById(id: string): Promise<AppointmentDetail 
     status: data.status,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
+    linkedTreatment: linkedTreatment
+      ? { seriesId: linkedTreatment.series_id, sessionNumber: linkedTreatment.session_number }
+      : null,
   }
 }
 
@@ -252,7 +357,12 @@ export async function getAppointmentsForCalendarRange(
     .order("starts_at", { ascending: true })
 
   if (error) throw error
-  return (data ?? []).map(mapAppointmentListRow)
+
+  const rows = data ?? []
+  const seriesIds = rows.map(activeLinkedTreatmentSeriesId).filter((id): id is string => id !== null)
+  const balances = await getSeriesRemainingBalances(seriesIds)
+
+  return rows.map((row) => mapAppointmentListRow(row, balances))
 }
 
 /** Feeds Patient Detail's "Randevular" section — most recent/soonest first, small cap (mirrors `RECENT_LIMIT`). */
@@ -270,7 +380,7 @@ export async function getAppointmentsForPatient(
     .limit(limit)
 
   if (error) throw error
-  return (data ?? []).map(mapAppointmentListRow)
+  return (data ?? []).map((row) => mapAppointmentListRow(row))
 }
 
 export type AppointmentConflict = {
@@ -280,12 +390,14 @@ export type AppointmentConflict = {
 }
 
 /**
- * Application-layer conflict guard (no Postgres exclusion constraint /
- * btree_gist extension). Appointments have no duration concept, so
- * "conflict" is an exact `starts_at` match rather than an interval-overlap
- * test: the same staff member can't have two non-cancelled appointments
- * starting at the exact same instant. `excludeAppointmentId` lets
- * `updateAppointment` re-check without the row conflicting with itself.
+ * Application-layer conflict guard (founder decision, Sprint 6 planning; no
+ * Postgres exclusion constraint / btree_gist extension). Appointments have
+ * no duration concept (founder decision, 2026-07-31 — see
+ * docs/CHANGELOG.md), so "conflict" is an exact `starts_at` match rather
+ * than an interval-overlap test: the same staff member can't have two
+ * non-cancelled appointments starting at the exact same instant.
+ * `excludeAppointmentId` lets `updateAppointment` re-check without the row
+ * conflicting with itself.
  */
 export async function findOverlappingAppointment(
   staffId: string,

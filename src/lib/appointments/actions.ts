@@ -17,14 +17,15 @@ import { formatTurkishPhoneDisplay } from "@/lib/format/phone"
 import { getAssignableStaff } from "@/lib/staff/queries"
 import type { Database } from "@/lib/supabase/database.types"
 import { createClient } from "@/lib/supabase/server"
-import { linkTreatmentsToAppointment } from "@/lib/teeth/actions"
+import { createTreatmentPlan } from "@/lib/treatment-plans/actions"
+import { getRemainingSessionsForPatient } from "@/lib/treatment-plans/queries"
 import { flattenZodError } from "@/lib/validation/zod"
 
 type AppointmentActivityInsert = Database["public"]["Tables"]["appointment_activities"]["Insert"]
 
 export type AppointmentActionState =
   | { error: string; fieldErrors?: Record<string, string>; success?: undefined }
-  | { success: true; error?: undefined }
+  | { success: true; warning?: string; error?: undefined }
   | undefined
 
 /**
@@ -56,14 +57,93 @@ function conflictErrorMessage(conflict: { patientName: string; startsAt: string 
 
 export type CreateAppointmentResult =
   | { error: string; fieldErrors?: Record<string, string> }
-  | { appointmentId: string }
+  | { appointmentId: string; treatmentWarning?: string }
+
+/**
+ * "+ Tedavi Tanımla" orchestration — runs after the appointment itself is
+ * already safely inserted, so a failure here never loses the appointment.
+ * Sprint 30 — Provider-Based Treatment Flow: a fresh plan is never created
+ * from here anymore. By the time the appointment form submits,
+ * `treatmentPlanId`/`treatmentPlanItemId` are already resolved — either the
+ * patient already had a plan item with remaining sessions, or the inline
+ * treatment-plan builder (in the same Sheet) already created one and handed
+ * back its id before this submit happened. This function's only job is
+ * linking, the same one path for both cases.
+ *
+ * Only `appointments.treatment_plan_id`/`treatment_plan_item_id` are set
+ * here — no `treatment_sessions` row is created at booking time (that's a
+ * separate, later "seansı tamamla" action, deliberately out of scope).
+ * Returns an error string to surface as a soft toast warning, never a hard
+ * failure of the appointment itself.
+ */
+async function applyAppointmentTreatmentPlan(
+  data: AppointmentFormValues,
+  appointmentId: string,
+): Promise<string | undefined> {
+  if (!data.treatmentPlanId || !data.treatmentPlanItemId) return undefined
+
+  const supabase = await createClient()
+
+  // Defense-in-depth: the picker only ever offers items with remaining
+  // sessions, but re-confirm here in case they were exhausted by another
+  // booking in the meantime (see appointment-treatment-section.tsx).
+  const remaining = await getRemainingSessionsForPatient(data.patientId)
+  const stillHasRemaining = remaining.some((row) => row.itemId === data.treatmentPlanItemId)
+  if (!stillHasRemaining) {
+    return "Seçilen kalemde artık kalan seans yok, plana bağlanamadı."
+  }
+  const { error } = await supabase
+    .from("appointments")
+    .update({ treatment_plan_id: data.treatmentPlanId, treatment_plan_item_id: data.treatmentPlanItemId })
+    .eq("id", appointmentId)
+  return error ? "Randevu tedavi planına bağlanamadı." : undefined
+}
+
+/**
+ * "Tek Seans / Tek İşlem" — Sprint 30.4 (founder decision, 2026-08-11): a
+ * real, single-item treatment plan is created behind the scenes so the
+ * existing payment ledger, "Aktif Tedavi Planı", and the owner's "Paketler"
+ * screen all work completely unchanged — the user never sees a "paket"
+ * concept anywhere in this flow, this is pure storage. Runs before the
+ * appointment insert so the new item's id can be written directly, no
+ * follow-up UPDATE needed; `applyAppointmentTreatmentPlan` below then links
+ * it exactly like a pre-existing plan item picked from "Tanımlanmış Paket".
+ * Returns `null` when this isn't a standalone-treatment submission at all.
+ */
+async function createHiddenPlanForStandaloneTreatment(
+  data: AppointmentFormValues,
+): Promise<{ treatmentPlanId: string; treatmentPlanItemId: string } | { warning: string } | null> {
+  if (!data.standaloneTreatmentName) return null
+
+  const result = await createTreatmentPlan({
+    patientId: data.patientId,
+    planName: data.standaloneTreatmentName,
+    items: [
+      {
+        providerId: data.staffId,
+        treatmentName: data.standaloneTreatmentName,
+        sessionCount: 1,
+        unitPrice: data.standalonePrice,
+        controlDate: data.controlDate,
+      },
+    ],
+  })
+
+  if (!result || "error" in result) {
+    return { warning: "Tedavi kaydı oluşturulamadı, randevu tedavisiz kaydedildi." }
+  }
+  return { treatmentPlanId: result.planId, treatmentPlanItemId: result.itemIds[0] }
+}
 
 /**
  * The actual insert logic, without the redirect — extracted so
- * `createPatient` (the patient form's "Aynı anda randevu oluştur" checkbox)
- * can reuse the exact same validation/overlap-check/insert/activity-log path
- * instead of duplicating it, while still deciding its own redirect target.
- * `createAppointment` below is a thin wrapper.
+ * `createPatient` (Sprint 8's "Aynı anda randevu oluştur" checkbox) can
+ * reuse the exact same validation/overlap-check/insert/activity-log path
+ * instead of duplicating it, while still deciding its own redirect target
+ * (a combined patient+appointment submission redirects differently on
+ * conflict than a standalone "Yeni Randevu" does). `createAppointment`
+ * below is now a thin wrapper: same behavior as before for every existing
+ * caller.
  */
 export async function insertAppointment(values: AppointmentFormValues): Promise<CreateAppointmentResult> {
   const parsed = appointmentFormSchema.safeParse(values)
@@ -76,8 +156,9 @@ export async function insertAppointment(values: AppointmentFormValues): Promise<
 
   const startsAt = combineDateAndTime(parsed.data.date, parsed.data.time)
   const startsAtISO = startsAt.toISOString()
-  // No duration concept — an appointment is a single point in time, ends_at
-  // is only still populated because the column is NOT NULL at the DB level.
+  // No duration concept (founder decision, 2026-07-31) — an appointment is a
+  // single point in time, ends_at is only still populated because the
+  // column is NOT NULL at the DB level.
   const endsAtISO = startsAtISO
 
   const conflict = await findOverlappingAppointment(parsed.data.staffId, startsAtISO)
@@ -85,17 +166,37 @@ export async function insertAppointment(values: AppointmentFormValues): Promise<
     return { error: conflictErrorMessage(conflict), fieldErrors: { time: "Bu saatte çakışan bir randevu var." } }
   }
 
+  // Checked before the appointment insert (never after) — a scheduling
+  // conflict must never leave an orphan treatment plan with no appointment.
+  const hiddenPlan = await createHiddenPlanForStandaloneTreatment(parsed.data)
+  const hiddenPlanWarning = hiddenPlan && "warning" in hiddenPlan ? hiddenPlan.warning : undefined
+  const effectiveData: AppointmentFormValues =
+    hiddenPlan && "treatmentPlanId" in hiddenPlan
+      ? {
+          ...parsed.data,
+          treatmentPlanId: hiddenPlan.treatmentPlanId,
+          treatmentPlanItemId: hiddenPlan.treatmentPlanItemId,
+          standaloneTreatmentName: "",
+          standalonePrice: undefined,
+        }
+      : parsed.data
+
   const supabase = await createClient()
   const { data: appointment, error } = await supabase
     .from("appointments")
     .insert({
       clinic_id: staffMember.clinicId,
-      patient_id: parsed.data.patientId,
-      staff_id: parsed.data.staffId,
-      reason: parsed.data.reason || null,
+      patient_id: effectiveData.patientId,
+      staff_id: effectiveData.staffId,
+      reason: effectiveData.reason || null,
       starts_at: startsAtISO,
       ends_at: endsAtISO,
-      status: parsed.data.status,
+      status: effectiveData.status,
+      // Only ever populated when the hidden-plan creation above failed —
+      // the fallback so the appointment itself is never lost over it.
+      standalone_treatment_name: effectiveData.standaloneTreatmentName || null,
+      standalone_price: effectiveData.standalonePrice ?? null,
+      control_date: effectiveData.controlDate || null,
       created_by: staffMember.userId,
       updated_by: staffMember.userId,
     })
@@ -115,30 +216,29 @@ export async function insertAppointment(values: AppointmentFormValues): Promise<
       created_by: staffMember.userId,
     },
   ]
-  if (parsed.data.note?.trim()) {
+  if (effectiveData.note?.trim()) {
     activities.push({
       clinic_id: staffMember.clinicId,
       appointment_id: appointment.id,
       activity_type: "note_added",
-      description: parsed.data.note.trim(),
+      description: effectiveData.note.trim(),
       created_by: staffMember.userId,
     })
   }
   await supabase.from("appointment_activities").insert(activities)
 
-  if (parsed.data.treatmentIds && parsed.data.treatmentIds.length > 0) {
-    await linkTreatmentsToAppointment(appointment.id, parsed.data.treatmentIds)
-  }
+  const linkWarning = await applyAppointmentTreatmentPlan(effectiveData, appointment.id)
 
   revalidatePath("/appointments")
-  revalidatePath(`/patients/${parsed.data.patientId}`)
-  return { appointmentId: appointment.id }
+  revalidatePath(`/patients/${effectiveData.patientId}`)
+  return { appointmentId: appointment.id, treatmentWarning: hiddenPlanWarning ?? linkWarning }
 }
 
 export async function createAppointment(values: AppointmentFormValues): Promise<AppointmentActionState> {
   const result = await insertAppointment(values)
   if ("error" in result) return result
-  redirect(`/appointments/${result.appointmentId}`)
+  const query = result.treatmentWarning ? `?tedaviHata=${encodeURIComponent(result.treatmentWarning)}` : ""
+  redirect(`/appointments/${result.appointmentId}${query}`)
 }
 
 export async function updateAppointment(
@@ -165,8 +265,8 @@ export async function updateAppointment(
 
   const startsAt = combineDateAndTime(parsed.data.date, parsed.data.time)
   const startsAtISO = startsAt.toISOString()
-  // No duration concept — ends_at is only still populated because the
-  // column is NOT NULL at the DB level.
+  // No duration concept (founder decision, 2026-07-31) — ends_at is only
+  // still populated because the column is NOT NULL at the DB level.
   const endsAtISO = startsAtISO
 
   const conflict = await findOverlappingAppointment(parsed.data.staffId, startsAtISO, appointmentId)
@@ -269,9 +369,21 @@ const APPOINTMENT_DEFAULT_DELETE_REASON = "Randevu ekranından silindi."
 /**
  * Core soft-delete, no redirect — same "insertX / createX" split as
  * `insertAppointment`/`createAppointment` above. Used directly by list-row
- * "Sil" actions that need to stay on the current page; `softDeleteAppointment`
- * below wraps this for the Appointment Detail page's own header action,
- * where navigating away afterward is correct.
+ * "Sil" actions (`AppointmentAgendaList`) that need to stay on the current
+ * page; `softDeleteAppointment` below wraps this for the Appointment
+ * Detail page's own header action, where navigating away afterward is
+ * correct (the page you were on no longer has anything to show).
+ *
+ * Sprint 28C.1 (Flexible Delete & Audit) rewrite of the 2026-07-31
+ * founder-decision behavior below: a linked treatment/session is **never**
+ * a hard block anymore, and this appointment's own soft-delete never mutates
+ * any linked clinical/financial row — completed history, `treatment_series`/
+ * `treatments` phantom-cleanup aside, is left exactly as it was. Instead a
+ * `warning` string is returned for the caller to surface. `reason` is
+ * optional here only because neither current caller (`AppointmentAgendaList`,
+ * `AppointmentDeleteDialog`) collects one yet from the user — a system
+ * default is used so `delete_reason` is never left null (the DB CHECK
+ * requires it whenever `deleted_at` is set).
  */
 export async function removeAppointment(appointmentId: string, reason?: string): Promise<AppointmentActionState> {
   const staffMember = await getCurrentStaffMember()
@@ -280,6 +392,113 @@ export async function removeAppointment(appointmentId: string, reason?: string):
   const supabase = await createClient()
   const deleteReason = reason?.trim() || APPOINTMENT_DEFAULT_DELETE_REASON
 
+  let warning: string | undefined
+
+  // Legacy treatments/treatment_series link (pre-Sprint 28 bookings).
+  const { data: linkedTreatment } = await supabase
+    .from("treatments")
+    .select("id, series_id, status")
+    .eq("appointment_id", appointmentId)
+    .neq("status", "voided")
+    .maybeSingle()
+
+  if (linkedTreatment?.status === "completed") {
+    warning =
+      "Bu randevuya bağlı tamamlanmış bir tedavi seansı bulunmaktadır. Silme işlemi geçmiş kayıtları gizler ancak audit kaydı korunur."
+  } else if (linkedTreatment) {
+    const { count: paymentCount } = await supabase
+      .from("treatment_payments")
+      .select("*", { count: "exact", head: true })
+      .eq("series_id", linkedTreatment.series_id)
+
+    if ((paymentCount ?? 0) > 0) {
+      warning =
+        "Bu randevuya bağlı tedavi paketi için ödeme kaydı bulunmaktadır. Silme işlemi geçmiş kayıtları gizler ancak audit kaydı korunur."
+    } else {
+      // No payment, not completed — this is the "invisible size-1 series"
+      // phantom-cleanup case (same as `createStandaloneTreatment`'s own
+      // failure path): never a real event, safe to void without a warning.
+      await supabase
+        .from("treatments")
+        .update({ status: "voided", updated_by: staffMember.userId })
+        .eq("id", linkedTreatment.id)
+
+      await supabase.from("treatment_activities").insert({
+        clinic_id: staffMember.clinicId,
+        treatment_id: linkedTreatment.id,
+        activity_type: "status_changed",
+        description: "Bağlı randevu silindiği için tedavi geçersiz kılındı.",
+        created_by: staffMember.userId,
+      })
+
+      const { count: remainingCount } = await supabase
+        .from("treatments")
+        .select("*", { count: "exact", head: true })
+        .eq("series_id", linkedTreatment.series_id)
+        .neq("status", "voided")
+
+      if ((remainingCount ?? 0) === 0) {
+        await supabase
+          .from("treatment_series")
+          .update({ status: "voided", updated_by: staffMember.userId })
+          .eq("id", linkedTreatment.series_id)
+
+        await supabase.from("treatment_activities").insert({
+          clinic_id: staffMember.clinicId,
+          series_id: linkedTreatment.series_id,
+          activity_type: "series_updated",
+          description: "Bağlı randevu silindiği için paket geçersiz kılındı.",
+          created_by: staffMember.userId,
+        })
+      }
+    }
+  }
+
+  // New treatment_plan_item link (Sprint 28C+ bookings) — previously
+  // entirely unguarded, closed here as part of this rewrite. Unlike the
+  // legacy branch above, nothing is ever voided/mutated on this path: a
+  // treatment_sessions row only ever exists once a visit was actually
+  // performed, so there is no "phantom placeholder" to clean up — only
+  // real history to warn about, or nothing at all.
+  if (!warning) {
+    // treatment_sessions.appointment_id is its own independent nullable FK —
+    // checked regardless of whether *this* appointment's own
+    // treatment_plan_item_id happens to be set, since nothing in the schema
+    // guarantees the two always agree.
+    const { count: completedSessionCount } = await supabase
+      .from("treatment_sessions")
+      .select("*", { count: "exact", head: true })
+      .eq("appointment_id", appointmentId)
+      .eq("status", "completed")
+      .is("deleted_at", null)
+
+    if ((completedSessionCount ?? 0) > 0) {
+      warning =
+        "Bu randevuya bağlı tamamlanmış bir tedavi seansı bulunmaktadır. Silme işlemi geçmiş kayıtları gizler ancak audit kaydı korunur."
+    } else {
+      const { data: planLink } = await supabase
+        .from("appointments")
+        .select("treatment_plan_id")
+        .eq("id", appointmentId)
+        .maybeSingle()
+
+      if (planLink?.treatment_plan_id) {
+        const { count: planPaymentCount } = await supabase
+          .from("treatment_payments")
+          .select("*", { count: "exact", head: true })
+          .eq("treatment_plan_id", planLink.treatment_plan_id)
+
+        if ((planPaymentCount ?? 0) > 0) {
+          warning =
+            "Bu randevunun bağlı olduğu tedavi planı için ödeme kaydı bulunmaktadır. Silme işlemi geçmiş kayıtları gizler ancak audit kaydı korunur."
+        }
+      }
+    }
+  }
+
+  // Soft-delete only — treatment_sessions.appointment_id is never touched,
+  // so a completed session's link to this appointment survives intact
+  // (founder decision, Sprint 28C.1).
   const { data: appointment, error } = await supabase
     .from("appointments")
     .update({
@@ -304,7 +523,7 @@ export async function removeAppointment(appointmentId: string, reason?: string):
 
   revalidatePath("/appointments")
   revalidatePath(`/patients/${appointment.patient_id}`)
-  return { success: true }
+  return { success: true, warning }
 }
 
 export async function softDeleteAppointment(appointmentId: string, reason?: string): Promise<AppointmentActionState> {
@@ -408,11 +627,11 @@ export type AppointmentImportCommitResult = {
 
 /**
  * Second, explicit commit step. Inserted one row at a time rather than one
- * bulk `.insert()` because each row needs its own overlap check first — a
- * batch bounded at `MAX_IMPORT_ROWS` (500) keeps this an acceptable,
- * infrequent-admin-action cost, not a hot-path concern. A single failing
- * row (conflict or insert error) is skipped and reported, never aborts the
- * rest of the file.
+ * bulk `.insert()` (unlike `commitLeadImport`/`commitPatientImport`) because
+ * each row needs its own overlap check first — a batch bounded at
+ * `MAX_IMPORT_ROWS` (500) keeps this an acceptable, infrequent-admin-action
+ * cost, not a hot-path concern. A single failing row (conflict or insert
+ * error) is skipped and reported, never aborts the rest of the file.
  */
 export async function commitAppointmentImport(
   rows: AppointmentImportPreviewRow[],
@@ -432,8 +651,8 @@ export async function commitAppointmentImport(
   for (const row of rows) {
     const startsAt = combineDateAndTime(row.date, row.time)
     const startsAtISO = startsAt.toISOString()
-    // No duration concept — ends_at is only still populated because the
-    // column is NOT NULL at the DB level.
+    // No duration concept (founder decision, 2026-07-31) — ends_at is only
+    // still populated because the column is NOT NULL at the DB level.
     const endsAtISO = startsAtISO
 
     const conflict = await findOverlappingAppointment(row.staffId, startsAtISO)

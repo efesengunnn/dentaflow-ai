@@ -8,23 +8,20 @@ import {
   parseAnchor,
   resolveSelectedDay,
 } from "@/components/appointments/calendar/calendar-utils"
-import { AppointmentAgendaList } from "@/components/appointments/appointment-agenda-list"
 import { AppointmentFilters } from "@/components/appointments/appointment-filters"
 import { AppointmentImportDialog } from "@/components/appointments/appointment-import-dialog"
 import { AppointmentTableSection } from "@/components/appointments/appointment-table-section"
+import { TodaysAppointmentsCard } from "@/components/dashboard/todays-appointments-card"
 import { PageContainer } from "@/components/shared/page-container"
 import { PageHeader } from "@/components/shared/page-header"
-import { PageSection } from "@/components/shared/page-section"
 import { Button } from "@/components/ui/button"
-import {
-  getAppointments,
-  getAppointmentsForCalendarRange,
-  type AppointmentListRow,
-} from "@/lib/appointments/queries"
+import { getAppointments, getAppointmentsForCalendarRange } from "@/lib/appointments/queries"
 import type { AppointmentStatus } from "@/lib/appointments/constants"
+import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
+import { getTodaysAppointments, type DashboardAppointmentRow } from "@/lib/dashboard/queries"
 import { localDateToDateString } from "@/lib/format/date"
-import { getPatientOptions, type PatientOption } from "@/lib/patients/queries"
-import { getAssignableStaff, type AssignableStaff } from "@/lib/staff/queries"
+import { getPatientOptions } from "@/lib/patients/queries"
+import { getAssignableStaff } from "@/lib/staff/queries"
 
 type AppointmentView = "list" | "calendar" | "today"
 type CalendarMode = "month" | "week"
@@ -46,12 +43,6 @@ function viewHref(view: AppointmentView): string {
   return `/appointments?view=${view}`
 }
 
-function nextDayDateString(dateString: string): string {
-  const date = new Date(`${dateString}T00:00:00`)
-  date.setDate(date.getDate() + 1)
-  return localDateToDateString(date)
-}
-
 /**
  * Three view modes (Liste/Takvim/Bugün), all URL-driven (`?view=`), same
  * bookmarkable-real-state philosophy as `/settings`'s nested routes — never
@@ -65,7 +56,7 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
     params.view === "list" || params.view === "today" ? params.view : "calendar"
   const mode: CalendarMode = params.mode === "week" ? "week" : "month"
 
-  const [staffOptions, patientOptions] = await Promise.all([getAssignableStaff(), getPatientOptions()])
+  const staffOptions = await getAssignableStaff()
 
   return (
     <PageContainer>
@@ -101,7 +92,7 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
         <CalendarViewSection anchorParam={params.anchor} dayParam={params.day} mode={mode} staffOptions={staffOptions} />
       )}
 
-      {view === "today" && <TodayViewSection patientOptions={patientOptions} staffOptions={staffOptions} />}
+      {view === "today" && <TodayViewSection />}
 
       {view === "list" && (
         <ListViewSection
@@ -130,10 +121,13 @@ async function CalendarViewSection({
   const anchor = parseAnchor(anchorParam)
   const range = mode === "month" ? getMonthGridRange(anchor) : getWeekRange(anchor)
   const selectedDay = resolveSelectedDay(dayParam, range)
-  const [rows, patientOptions] = await Promise.all([
+  const [rows, patientOptions, staffMember] = await Promise.all([
     getAppointmentsForCalendarRange(localDateToDateString(range.start), localDateToDateString(range.end)),
     getPatientOptions(),
+    getCurrentStaffMember(),
   ])
+  const canManagePayments =
+    staffMember?.role === "owner" || staffMember?.role === "secretary" || staffMember?.role === "beauty_specialist"
 
   return (
     <AppointmentCalendar
@@ -144,29 +138,46 @@ async function CalendarViewSection({
       selectedDay={selectedDay}
       patientOptions={patientOptions}
       staffOptions={staffOptions}
+      canManagePayments={canManagePayments}
     />
   )
 }
 
 /**
- * "Bugün" is the one screen in Randevular that isn't a calendar or a record
- * table — it's "run the floor right now." Groups today's appointments by
- * `staffId` (a field every row already carries, no new query) into one
- * agenda list per staff member, busiest first, so doctor workload is
- * visible as column order/count instead of buried in a `staffName`
- * sub-label on every row. A single-doctor day collapses to one column.
+ * Sprint 25 (Project Rebirth) — a 10-angle design audit's clinical-workflow
+ * research made the case explicitly: "Bugün" is the one screen in Randevular
+ * that isn't a calendar or a record table — it's "run the floor right now,"
+ * and a flat chronological list doesn't answer a front-desk secretary's real
+ * question ("who's waiting on which doctor"). This groups the exact same
+ * `getTodaysAppointments()` rows by `staffId` — a field every row already
+ * carries, no new query — into one `TodaysAppointmentsCard` per staff
+ * member, busiest first, so doctor workload is visible as column order/
+ * count instead of buried in a `staffName` sub-label on every row. Each
+ * column still reuses `TodaysAppointmentsCard` completely unmodified
+ * (same Geldi/Tamamlandı/Tahsilat actions, same internal queue-priority
+ * sort) — zero duplicated interactive logic, zero new Server Actions.
+ *
+ * The real `AppointmentStatus` enum has no "in progress" state — only
+ * `scheduled`/`confirmed`/`completed`/`cancelled`/`no_show` — so this
+ * doesn't invent a fake "with the doctor now" column; `confirmed` already
+ * reads as "arrived" per `TodaysAppointmentsCard`'s own Sprint 24 queue
+ * ranking, and that's as far as the data honestly goes.
+ *
+ * A single-doctor day collapses to one column — same as the previous
+ * flat-list shape, so nothing gets worse for a one-doctor clinic; the
+ * grouping only starts doing real work once there's more than one staff
+ * member seeing patients today.
  */
-async function TodayViewSection({
-  patientOptions,
-  staffOptions,
-}: {
-  patientOptions: PatientOption[]
-  staffOptions: AssignableStaff[]
-}) {
-  const todayStart = localDateToDateString(new Date())
-  const rows = await getAppointmentsForCalendarRange(todayStart, nextDayDateString(todayStart))
+async function TodayViewSection() {
+  const [rows, staffMember] = await Promise.all([getTodaysAppointments(), getCurrentStaffMember()])
+  const canManagePayments =
+    staffMember?.role === "owner" || staffMember?.role === "secretary" || staffMember?.role === "beauty_specialist"
 
-  const byStaff = new Map<string, { staffName: string; rows: AppointmentListRow[] }>()
+  if (rows.length === 0) {
+    return <TodaysAppointmentsCard appointments={rows} canManagePayments={canManagePayments} />
+  }
+
+  const byStaff = new Map<string, { staffName: string; rows: DashboardAppointmentRow[] }>()
   for (const row of rows) {
     const group = byStaff.get(row.staffId)
     if (group) {
@@ -177,28 +188,15 @@ async function TodayViewSection({
   }
   const staffGroups = Array.from(byStaff.entries()).sort(([, a], [, b]) => b.rows.length - a.rows.length)
 
-  if (staffGroups.length === 0) {
-    return (
-      <AppointmentAgendaList
-        appointments={[]}
-        emptyTitle="Bugün randevu yok"
-        patientOptions={patientOptions}
-        staffOptions={staffOptions}
-      />
-    )
-  }
-
   return (
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 xl:grid-cols-3">
       {staffGroups.map(([staffId, group]) => (
-        <PageSection key={staffId} title={`${group.staffName} · ${group.rows.length}`}>
-          <AppointmentAgendaList
-            appointments={group.rows}
-            emptyTitle="Bugün randevu yok"
-            patientOptions={patientOptions}
-            staffOptions={staffOptions}
-          />
-        </PageSection>
+        <TodaysAppointmentsCard
+          key={staffId}
+          title={`${group.staffName} · ${group.rows.length}`}
+          appointments={group.rows}
+          canManagePayments={canManagePayments}
+        />
       ))}
     </div>
   )
