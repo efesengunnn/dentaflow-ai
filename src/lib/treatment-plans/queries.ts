@@ -779,6 +779,18 @@ export type AppointmentLinkedTreatmentPlanItem = {
   itemStatus: TreatmentLifecycleStatus
   /** Whether a `completed` session already exists tied to *this* appointment — the same idempotency check `completeTreatmentSession` re-verifies server-side, mirrored here so the button/badge choice never lies. */
   hasCompletedSessionForAppointment: boolean
+  /**
+   * Plan-level financial figures (Sprint 31 — founder bug report 2026-09-11:
+   * "randevu oluşturup ödeme al dediğimde panelde bunun sonucu verilmiyor").
+   * The appointment detail panel could show a linked new-model plan's session
+   * progress but nothing about money — no total, no paid/remaining, no way to
+   * take payment — even though the plan carried a price and payments existed.
+   * Same per-plan ledger math as `PatientPaymentsSection` / `getTreatmentPlanDetail`.
+   */
+  totalAmount: number | null
+  paidAmount: number
+  remainingBalance: number | null
+  currency: string
 }
 
 export async function getAppointmentLinkedTreatmentPlanItem(
@@ -797,7 +809,7 @@ export async function getAppointmentLinkedTreatmentPlanItem(
   const { data: item, error: itemError } = await supabase
     .from("treatment_plan_items")
     .select(
-      "id, treatment_plan_id, provider_id, treatment_name, session_count, status, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name), plan:treatment_plans!treatment_plan_items_treatment_plan_id_fkey(plan_name)",
+      "id, treatment_plan_id, provider_id, treatment_name, session_count, status, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name), plan:treatment_plans!treatment_plan_items_treatment_plan_id_fkey(plan_name, currency)",
     )
     .eq("id", appointment.treatment_plan_item_id)
     .is("deleted_at", null)
@@ -805,24 +817,43 @@ export async function getAppointmentLinkedTreatmentPlanItem(
 
   if (itemError || !item) return null
 
-  const [{ count: completedCount }, { data: appointmentSession }] = await Promise.all([
-    supabase
-      .from("treatment_sessions")
-      .select("id", { count: "exact", head: true })
-      .eq("treatment_plan_item_id", item.id)
-      .eq("status", "completed")
-      .is("deleted_at", null),
-    supabase
-      .from("treatment_sessions")
-      .select("id")
-      .eq("appointment_id", appointmentId)
-      .eq("treatment_plan_item_id", item.id)
-      .eq("status", "completed")
-      .is("deleted_at", null)
-      .maybeSingle(),
-  ])
+  const [{ count: completedCount }, { data: appointmentSession }, { data: planItems }, { data: planPayments }] =
+    await Promise.all([
+      supabase
+        .from("treatment_sessions")
+        .select("id", { count: "exact", head: true })
+        .eq("treatment_plan_item_id", item.id)
+        .eq("status", "completed")
+        .is("deleted_at", null),
+      supabase
+        .from("treatment_sessions")
+        .select("id")
+        .eq("appointment_id", appointmentId)
+        .eq("treatment_plan_item_id", item.id)
+        .eq("status", "completed")
+        .is("deleted_at", null)
+        .maybeSingle(),
+      // Plan-level financials — the payment ledger lives per plan, not per
+      // item, so the total is summed over every item in the plan and the paid
+      // amount over every payment against the plan (same rule as
+      // `getTreatmentPlanDetail`), not just this one linked item.
+      supabase
+        .from("treatment_plan_items")
+        .select("total_price")
+        .eq("treatment_plan_id", item.treatment_plan_id)
+        .is("deleted_at", null),
+      supabase
+        .from("treatment_payments")
+        .select("amount, entry_type")
+        .eq("treatment_plan_id", item.treatment_plan_id),
+    ])
 
   const completed = completedCount ?? 0
+
+  const totalAmount = deriveTotalAmount((planItems ?? []).map((row) => ({ totalPrice: row.total_price })))
+  const paidAmount = sumPaymentLedger(
+    (planPayments ?? []).map((row) => ({ amount: row.amount, entryType: row.entry_type })),
+  )
 
   return {
     treatmentPlanId: item.treatment_plan_id,
@@ -836,5 +867,9 @@ export async function getAppointmentLinkedTreatmentPlanItem(
     remainingSessions: Math.max(item.session_count - completed, 0),
     itemStatus: item.status,
     hasCompletedSessionForAppointment: appointmentSession !== null,
+    totalAmount,
+    paidAmount,
+    remainingBalance: deriveRemainingBalance(totalAmount, paidAmount),
+    currency: item.plan?.currency ?? "TRY",
   }
 }

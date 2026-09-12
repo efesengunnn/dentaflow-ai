@@ -20,10 +20,12 @@ import type { AssignableStaff } from "@/lib/staff/queries"
 import { canCompleteSession, type TreatmentPlanActor } from "@/lib/treatment-plans/permissions"
 import type { AppointmentLinkedTreatmentPlanItem } from "@/lib/treatment-plans/queries"
 import type { TreatmentSeriesDetail } from "@/lib/treatments/queries"
+import { cn } from "@/lib/utils"
 import { AppointmentActivityTimeline } from "./appointment-activity-timeline"
 import { AppointmentDeleteDialog } from "./appointment-delete-dialog"
 import { AppointmentEditSheet } from "./appointment-edit-sheet"
 import { AppointmentInfoPanel } from "./appointment-info-panel"
+import { AppointmentPlanPaymentButton } from "./appointment-plan-payment-button"
 
 /**
  * Every role (owner/doctor/secretary) can manage appointments — unlike Lead/
@@ -88,6 +90,16 @@ function AppointmentDetailView({
     linkedTreatmentPlanItem.itemStatus === "active" &&
     canCompleteSession(treatmentPlanActor)
 
+  // Sprint 31 — new-model sibling of `showTahsilatYap` (legacy series) above.
+  // The appointment panel previously offered payment only for the legacy
+  // series model; a standalone/plan-linked appointment showed a price but no
+  // way to collect against it (founder bug report 2026-09-11).
+  const showPlanTahsilat =
+    linkedTreatmentPlanItem !== null &&
+    canManagePayments &&
+    linkedTreatmentPlanItem.remainingBalance !== null &&
+    linkedTreatmentPlanItem.remainingBalance > 0
+
   return (
     <PageContainer>
       <BreadcrumbLabel value={appointment.patientName} />
@@ -136,6 +148,38 @@ function AppointmentDetailView({
                 <p className="text-sm text-muted-foreground">
                   {linkedTreatmentPlanItem.completedSessions} / {linkedTreatmentPlanItem.sessionCount} Seans Tamamlandı
                 </p>
+
+                <div className="mt-1 grid grid-cols-3 gap-2 rounded-xl border bg-muted/20 p-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Toplam</p>
+                    <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                      {linkedTreatmentPlanItem.totalAmount === null
+                        ? "Belirlenmedi"
+                        : `${linkedTreatmentPlanItem.totalAmount.toLocaleString("tr-TR")} ${linkedTreatmentPlanItem.currency}`}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Ödenen</p>
+                    <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                      {linkedTreatmentPlanItem.paidAmount.toLocaleString("tr-TR")} {linkedTreatmentPlanItem.currency}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Kalan</p>
+                    <p
+                      className={cn(
+                        "mt-0.5 text-sm font-semibold tabular-nums",
+                        linkedTreatmentPlanItem.remainingBalance !== null &&
+                          linkedTreatmentPlanItem.remainingBalance > 0 &&
+                          "text-warning",
+                      )}
+                    >
+                      {linkedTreatmentPlanItem.remainingBalance === null
+                        ? "—"
+                        : `${linkedTreatmentPlanItem.remainingBalance.toLocaleString("tr-TR")} ${linkedTreatmentPlanItem.currency}`}
+                    </p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -203,6 +247,12 @@ function AppointmentDetailView({
                       Tahsilat Yap
                     </Button>
                   }
+                />
+              )}
+              {showPlanTahsilat && linkedTreatmentPlanItem && (
+                <AppointmentPlanPaymentButton
+                  treatmentPlanId={linkedTreatmentPlanItem.treatmentPlanId}
+                  remainingBalance={linkedTreatmentPlanItem.remainingBalance}
                 />
               )}
               <Button size="sm" variant="outline" asChild>
