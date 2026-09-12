@@ -61,7 +61,7 @@ create policy staff_treatment_catalog_items_update_owner_only on public.staff_tr
   )
   with check (clinic_id = public.current_clinic_id());
 
--- Seed Dr. Alparslan Tekiner's real catalog (founder-provided list,
+-- Seed Dt. Ayten Altındağ's real catalog (founder-provided list,
 -- 2026-07-28) — no default_price yet ("Belirlenmedi", same convention as
 -- treatment_series.total_fee), the founder will fill prices in via the
 -- new Ayarlar screen once it ships.

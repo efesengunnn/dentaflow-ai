@@ -1,5 +1,5 @@
 -- Founder-provided catalog for Havva Şeker (beauty_specialist), 2026-07-28
--- — same "no price yet" convention as Dr. Alparslan Tekiner's seed
+-- — same "no price yet" convention as Dt. Ayten Altındağ's seed
 -- (20260728175942), fillable via Ayarlar > Tedavi Kataloğu.
 --
 -- Same environment guard as 20260728175942 — production-only UUIDs, no-op
