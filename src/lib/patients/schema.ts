@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { SUPPORTED_CURRENCIES } from "@/lib/format/currency"
+
 export const patientFormSchema = z
   .object({
     fullName: z.string().trim().min(2, "Ad soyad en az 2 karakter olmalı."),
@@ -24,6 +26,8 @@ export const patientFormSchema = z
     // convention as the standalone appointment form's own treatment section.
     treatmentType: z.string().trim().optional(),
     totalFee: z.number().min(0, "Ücret negatif olamaz.").optional(),
+    /** Sprint 31 — currency for the combo-created treatment's fee. `.optional()` (not `.default`) to keep react-hook-form input/output types identical; falls back to "TRY" server-side. */
+    treatmentCurrency: z.enum(SUPPORTED_CURRENCIES).optional(),
   })
   .superRefine((data, ctx) => {
     if (!data.createAppointment) return
@@ -53,4 +57,5 @@ export const patientFormDefaults: PatientFormValues = {
   appointmentTime: "",
   treatmentType: "",
   totalFee: undefined,
+  treatmentCurrency: "TRY",
 }

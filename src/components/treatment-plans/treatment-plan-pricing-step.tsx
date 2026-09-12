@@ -5,11 +5,19 @@ import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { MoneyInput } from "@/components/ui/money-input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { CURRENCY_OPTIONS, currencySymbol, type CurrencyCode } from "@/lib/format/currency"
 import { dateStringToLocalDate, localDateToDateString } from "@/lib/format/date"
 import type { DraftTreatmentSelection } from "./treatment-plan-builder"
 
-function formatMoney(amount: number): string {
-  return `${amount.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`
+function formatMoney(amount: number, currency: string): string {
+  return `${amount.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencySymbol(currency)}`
 }
 
 function addDaysFromAnchor(anchor: Date, days: number): string {
@@ -90,27 +98,50 @@ function ControlDateField({
   )
 }
 
-/** Adım 4 — "Fiyat": kalem başına birim fiyat + Kontrol Günü + otomatik toplam, alt kısımda Ara Toplam (bu tur) ve Genel Toplam (düzenlenemez). */
+/** TRY first, then the rest — deterministic, matches the ledger's order. */
+function sortCurrencies(currencies: string[]): string[] {
+  return [...currencies].sort((a, b) =>
+    a === "TRY" ? -1 : b === "TRY" ? 1 : a.localeCompare(b),
+  )
+}
+
+/**
+ * Adım 4 — "Fiyat": kalem başına birim fiyat + para birimi + Kontrol Günü +
+ * otomatik toplam. Sprint 31 — bir plan TRY + EUR karışık olabildiği için Ara
+ * Toplam ve Genel Toplam her para birimi için ayrı gösterilir, asla toplanmaz.
+ */
 function TreatmentPlanPricingStep({
   selections,
   onChangeUnitPrice,
+  onChangeCurrency,
   onChangeControlDate,
-  committedTotal,
+  committedTotalsByCurrency,
 }: {
   selections: DraftTreatmentSelection[]
   onChangeUnitPrice: (key: string, price: number | undefined) => void
+  onChangeCurrency: (key: string, currency: CurrencyCode) => void
   onChangeControlDate: (key: string, controlDate: string | undefined) => void
-  /** Önceki turlarda zaten eklenmiş kalemlerin toplamı — bu turun Ara Toplam'ına eklenip Genel Toplam'ı oluşturur. */
-  committedTotal: number
+  /** Önceki turlarda eklenmiş kalemlerin para birimi bazında toplamı. */
+  committedTotalsByCurrency: Record<string, number>
 }) {
-  const roundTotal = selections.reduce((sum, row) => sum + row.sessionCount * (row.unitPrice ?? 0), 0)
-  const grandTotal = committedTotal + roundTotal
+  const roundTotalsByCurrency = selections.reduce<Record<string, number>>((totals, row) => {
+    totals[row.currency] = (totals[row.currency] ?? 0) + row.sessionCount * (row.unitPrice ?? 0)
+    return totals
+  }, {})
+
+  const grandTotalsByCurrency: Record<string, number> = { ...committedTotalsByCurrency }
+  for (const [currency, amount] of Object.entries(roundTotalsByCurrency)) {
+    grandTotalsByCurrency[currency] = (grandTotalsByCurrency[currency] ?? 0) + amount
+  }
+
+  const roundCurrencies = sortCurrencies(Object.keys(roundTotalsByCurrency))
+  const grandCurrencies = sortCurrencies(Object.keys(grandTotalsByCurrency))
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h3 className="text-base font-medium">Fiyat</h3>
-        <p className="text-sm text-muted-foreground">Her tedavi için birim fiyat girin — toplam otomatik hesaplanır.</p>
+        <p className="text-sm text-muted-foreground">Her tedavi için birim fiyat ve para birimini girin — toplam otomatik hesaplanır.</p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -122,13 +153,28 @@ function TreatmentPlanPricingStep({
                 <span className="min-w-0 truncate font-medium">
                   {row.treatmentName} <span className="text-muted-foreground">×{row.sessionCount}</span>
                 </span>
-                <span className="shrink-0 font-semibold tabular-nums">{formatMoney(total)}</span>
+                <span className="shrink-0 font-semibold tabular-nums">{formatMoney(total, row.currency)}</span>
               </div>
-              <MoneyInput
-                value={row.unitPrice}
-                onChange={(value) => onChangeUnitPrice(row.key, value)}
-                placeholder="Birim fiyat (opsiyonel)"
-              />
+              <div className="flex items-center gap-2">
+                <MoneyInput
+                  value={row.unitPrice}
+                  onChange={(value) => onChangeUnitPrice(row.key, value)}
+                  placeholder="Birim fiyat (opsiyonel)"
+                  className="flex-1"
+                />
+                <Select value={row.currency} onValueChange={(value) => onChangeCurrency(row.key, value as CurrencyCode)}>
+                  <SelectTrigger className="w-24 shrink-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <ControlDateField value={row.controlDate} onChange={(value) => onChangeControlDate(row.key, value)} />
             </div>
           )
@@ -136,13 +182,25 @@ function TreatmentPlanPricingStep({
       </div>
 
       <div className="flex flex-col gap-1.5 rounded-xl bg-muted/40 p-3.5 text-sm">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">Ara Toplam (bu sağlayıcı)</span>
-          <span className="font-medium tabular-nums">{formatMoney(roundTotal)}</span>
+          <span className="flex flex-col items-end font-medium tabular-nums">
+            {roundCurrencies.length === 0
+              ? formatMoney(0, "TRY")
+              : roundCurrencies.map((currency) => (
+                  <span key={currency}>{formatMoney(roundTotalsByCurrency[currency], currency)}</span>
+                ))}
+          </span>
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <span className="font-medium">Genel Toplam</span>
-          <span className="font-display text-lg font-semibold tabular-nums">{formatMoney(grandTotal)}</span>
+          <span className="flex flex-col items-end font-display text-lg font-semibold tabular-nums">
+            {grandCurrencies.length === 0
+              ? formatMoney(0, "TRY")
+              : grandCurrencies.map((currency) => (
+                  <span key={currency}>{formatMoney(grandTotalsByCurrency[currency], currency)}</span>
+                ))}
+          </span>
         </div>
       </div>
     </div>

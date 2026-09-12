@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { AppointmentActivityRow, AppointmentDetail } from "@/lib/appointments/queries"
+import { formatCurrency } from "@/lib/format/currency"
 import { formatIstanbulDateTime } from "@/lib/format/date"
 import type { PatientOption } from "@/lib/patients/queries"
 import type { AssignableStaff } from "@/lib/staff/queries"
@@ -93,12 +94,13 @@ function AppointmentDetailView({
   // Sprint 31 — new-model sibling of `showTahsilatYap` (legacy series) above.
   // The appointment panel previously offered payment only for the legacy
   // series model; a standalone/plan-linked appointment showed a price but no
-  // way to collect against it (founder bug report 2026-09-11).
+  // way to collect against it (founder bug report 2026-09-11). A plan can owe
+  // in more than one currency, so this is true when *any* currency has a
+  // remaining balance.
   const showPlanTahsilat =
     linkedTreatmentPlanItem !== null &&
     canManagePayments &&
-    linkedTreatmentPlanItem.remainingBalance !== null &&
-    linkedTreatmentPlanItem.remainingBalance > 0
+    linkedTreatmentPlanItem.currencyTotals.some((entry) => entry.remaining !== null && entry.remaining > 0)
 
   return (
     <PageContainer>
@@ -149,36 +151,34 @@ function AppointmentDetailView({
                   {linkedTreatmentPlanItem.completedSessions} / {linkedTreatmentPlanItem.sessionCount} Seans Tamamlandı
                 </p>
 
-                <div className="mt-1 grid grid-cols-3 gap-2 rounded-xl border bg-muted/20 p-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Toplam</p>
-                    <p className="mt-0.5 text-sm font-semibold tabular-nums">
-                      {linkedTreatmentPlanItem.totalAmount === null
-                        ? "Belirlenmedi"
-                        : `${linkedTreatmentPlanItem.totalAmount.toLocaleString("tr-TR")} ${linkedTreatmentPlanItem.currency}`}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Ödenen</p>
-                    <p className="mt-0.5 text-sm font-semibold tabular-nums">
-                      {linkedTreatmentPlanItem.paidAmount.toLocaleString("tr-TR")} {linkedTreatmentPlanItem.currency}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Kalan</p>
-                    <p
-                      className={cn(
-                        "mt-0.5 text-sm font-semibold tabular-nums",
-                        linkedTreatmentPlanItem.remainingBalance !== null &&
-                          linkedTreatmentPlanItem.remainingBalance > 0 &&
-                          "text-warning",
-                      )}
-                    >
-                      {linkedTreatmentPlanItem.remainingBalance === null
-                        ? "—"
-                        : `${linkedTreatmentPlanItem.remainingBalance.toLocaleString("tr-TR")} ${linkedTreatmentPlanItem.currency}`}
-                    </p>
-                  </div>
+                <div className="mt-1 flex flex-col gap-2">
+                  {linkedTreatmentPlanItem.currencyTotals.map((entry) => (
+                    <div key={entry.currency} className="grid grid-cols-3 gap-2 rounded-xl border bg-muted/20 p-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Toplam</p>
+                        <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                          {entry.total === null ? "Belirlenmedi" : formatCurrency(entry.total, entry.currency)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Ödenen</p>
+                        <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                          {formatCurrency(entry.paid, entry.currency)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Kalan</p>
+                        <p
+                          className={cn(
+                            "mt-0.5 text-sm font-semibold tabular-nums",
+                            entry.remaining !== null && entry.remaining > 0 && "text-warning",
+                          )}
+                        >
+                          {entry.remaining === null ? "—" : formatCurrency(entry.remaining, entry.currency)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -252,7 +252,10 @@ function AppointmentDetailView({
               {showPlanTahsilat && linkedTreatmentPlanItem && (
                 <AppointmentPlanPaymentButton
                   treatmentPlanId={linkedTreatmentPlanItem.treatmentPlanId}
-                  remainingBalance={linkedTreatmentPlanItem.remainingBalance}
+                  currencyBalances={linkedTreatmentPlanItem.currencyTotals.map((entry) => ({
+                    currency: entry.currency,
+                    remaining: entry.remaining,
+                  }))}
                 />
               )}
               <Button size="sm" variant="outline" asChild>

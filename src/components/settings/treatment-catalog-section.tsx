@@ -8,12 +8,13 @@ import { EmptyState } from "@/components/shared/empty-state"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { getInitials } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format/currency"
 import { setCatalogItemActive } from "@/lib/treatment-catalog/actions"
 import type { CatalogItem } from "@/lib/treatment-catalog/queries"
 import { TreatmentCatalogItemSheet } from "./treatment-catalog-item-sheet"
 
-function formatPrice(price: number | null): string {
-  return price === null ? "Belirlenmedi" : `${price.toLocaleString("tr-TR")} TRY`
+function formatPrice(price: number | null, currency: string): string {
+  return price === null ? "Belirlenmedi" : formatCurrency(price, currency)
 }
 
 function TreatmentCatalogSection({
@@ -79,7 +80,7 @@ function CatalogItemRow({
         <p className={item.isActive ? "font-medium" : "text-muted-foreground font-medium line-through"}>
           {item.treatmentType}
         </p>
-        <p className="text-muted-foreground text-xs">{formatPrice(item.defaultPrice)}</p>
+        <p className="text-muted-foreground text-xs">{formatPrice(item.defaultPrice, item.currency)}</p>
       </div>
       <TreatmentCatalogItemSheet
         staffId={staffId}

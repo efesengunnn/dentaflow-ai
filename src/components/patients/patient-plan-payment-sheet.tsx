@@ -13,13 +13,22 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { TreatmentPlanPaymentForm } from "@/components/treatment-plans/treatment-plan-payment-form"
+import { TreatmentPlanPaymentForm, type CurrencyBalance } from "@/components/treatment-plans/treatment-plan-payment-form"
+import { formatCurrency } from "@/lib/format/currency"
 
 type PayablePlan = {
   id: string
   planName: string
-  remainingBalance: number | null
-  currency: string
+  /** Sprint 31 — per-currency remaining balance; a plan may owe in more than one. */
+  currencyBalances: CurrencyBalance[]
+}
+
+function formatRemaining(balances: CurrencyBalance[]): string {
+  const withBalance = balances.filter((b) => b.remaining !== null && b.remaining > 0)
+  if (withBalance.length === 0) {
+    return balances.some((b) => b.remaining === null) ? "Belirlenmedi" : formatCurrency(0, balances[0]?.currency ?? "TRY")
+  }
+  return withBalance.map((b) => formatCurrency(b.remaining ?? 0, b.currency)).join(" + ")
 }
 
 /**
@@ -70,19 +79,14 @@ function PatientPlanPaymentSheet({ planOptions }: { planOptions: PayablePlan[] }
                   className="flex items-center justify-between rounded-lg border p-3 text-left text-sm transition-colors hover:bg-muted/50"
                 >
                   <span className="font-medium">{plan.planName}</span>
-                  <span className="text-muted-foreground">
-                    Kalan:{" "}
-                    {plan.remainingBalance === null
-                      ? "Belirlenmedi"
-                      : `${plan.remainingBalance.toLocaleString("tr-TR")} ${plan.currency}`}
-                  </span>
+                  <span className="text-muted-foreground">Kalan: {formatRemaining(plan.currencyBalances)}</span>
                 </button>
               ))}
             </div>
           ) : (
             <TreatmentPlanPaymentForm
               treatmentPlanId={selectedPlan.id}
-              remainingBalance={selectedPlan.remainingBalance}
+              currencyBalances={selectedPlan.currencyBalances}
               onSuccess={() => {
                 handleOpenChange(false)
                 router.refresh()

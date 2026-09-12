@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { formatCurrency } from "@/lib/format/currency"
 import { dateStringToLocalDate, localDateToDateString } from "@/lib/format/date"
 import {
   recordTreatmentPlanPaymentCorrection,
@@ -84,7 +85,7 @@ function TreatmentPlanPaymentCorrectionForm({
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       <FieldGroup>
         <p className="text-sm text-muted-foreground">
-          Düzeltilecek ödeme: {payment.amount.toLocaleString("tr-TR")} ₺ ·{" "}
+          Düzeltilecek ödeme: {formatCurrency(payment.amount, payment.currency)} ·{" "}
           {new Date(payment.paidAt).toLocaleDateString("tr-TR")}
         </p>
         <FormField

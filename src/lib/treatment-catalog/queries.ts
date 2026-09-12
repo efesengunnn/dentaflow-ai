@@ -6,6 +6,8 @@ export type CatalogItem = {
   treatmentType: string
   /** `null` — "Belirlenmedi", same convention as treatment_series.totalFee. */
   defaultPrice: number | null
+  /** Sprint 31 — 'TRY' | 'EUR'; the price above is in this currency. */
+  currency: string
   isActive: boolean
 }
 
@@ -19,7 +21,7 @@ export async function getCatalogForStaff(staffId: string): Promise<CatalogItem[]
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("staff_treatment_catalog_items")
-    .select("id, staff_id, treatment_type, default_price, is_active")
+    .select("id, staff_id, treatment_type, default_price, currency, is_active")
     .eq("staff_id", staffId)
     .eq("is_active", true)
     .order("treatment_type")
@@ -31,6 +33,7 @@ export async function getCatalogForStaff(staffId: string): Promise<CatalogItem[]
     staffId: row.staff_id,
     treatmentType: row.treatment_type,
     defaultPrice: row.default_price,
+    currency: row.currency,
     isActive: row.is_active,
   }))
 }
@@ -48,7 +51,7 @@ export async function getCatalogForClinic(): Promise<CatalogItemWithStaff[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("staff_treatment_catalog_items")
-    .select("id, staff_id, treatment_type, default_price, is_active, staff:staff_members!staff_id(full_name)")
+    .select("id, staff_id, treatment_type, default_price, currency, is_active, staff:staff_members!staff_id(full_name)")
     .order("treatment_type")
 
   if (error) throw error
@@ -58,6 +61,7 @@ export async function getCatalogForClinic(): Promise<CatalogItemWithStaff[]> {
     staffId: row.staff_id,
     treatmentType: row.treatment_type,
     defaultPrice: row.default_price,
+    currency: row.currency,
     isActive: row.is_active,
     staffName: row.staff?.full_name ?? "—",
   }))

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import type { CurrencyCode } from "@/lib/format/currency"
 import { fetchCatalogForStaff } from "@/lib/treatment-catalog/actions"
 import type { CatalogItem } from "@/lib/treatment-catalog/queries"
 import type { AssignableStaff } from "@/lib/staff/queries"
@@ -24,6 +25,8 @@ export type DraftTreatmentSelection = {
   isCustom: boolean
   sessionCount: number
   unitPrice: number | undefined
+  /** Sprint 31 — carried from the catalog item, or chosen (custom) in the pricing step. */
+  currency: CurrencyCode
   controlDate: string | undefined
 }
 
@@ -78,7 +81,13 @@ function TreatmentPlanBuilder({
   const [catalog, setCatalog] = useState<CatalogItem[]>([])
   const [loadedCatalogForProviderId, setLoadedCatalogForProviderId] = useState<string | null>(null)
 
-  const committedTotal = committedItems.reduce((sum, item) => sum + item.sessionCount * (item.unitPrice ?? 0), 0)
+  // Per-currency committed totals — a plan may mix TRY + EUR items, so a
+  // single cross-currency sum would be meaningless (Sprint 31).
+  const committedTotalsByCurrency = committedItems.reduce<Record<string, number>>((totals, item) => {
+    const currency = item.currency ?? "TRY"
+    totals[currency] = (totals[currency] ?? 0) + item.sessionCount * (item.unitPrice ?? 0)
+    return totals
+  }, {})
 
   useEffect(() => {
     if (!draftProvider || loadedCatalogForProviderId === draftProvider.id) return
@@ -93,13 +102,21 @@ function TreatmentPlanBuilder({
     }
   }, [draftProvider, loadedCatalogForProviderId])
 
-  function handleToggleCatalogItem(treatmentName: string) {
+  function handleToggleCatalogItem(treatmentName: string, currency: string) {
     setDraftTreatments((prev) => {
       const existing = prev.find((row) => !row.isCustom && row.treatmentName === treatmentName)
       if (existing) return prev.filter((row) => row !== existing)
       return [
         ...prev,
-        { key: createId(), treatmentName, isCustom: false, sessionCount: 1, unitPrice: undefined, controlDate: undefined },
+        {
+          key: createId(),
+          treatmentName,
+          isCustom: false,
+          sessionCount: 1,
+          unitPrice: undefined,
+          currency: (currency as CurrencyCode) ?? "TRY",
+          controlDate: undefined,
+        },
       ]
     })
   }
@@ -107,7 +124,7 @@ function TreatmentPlanBuilder({
   function handleAddCustomTreatment(name: string) {
     setDraftTreatments((prev) => [
       ...prev,
-      { key: createId(), treatmentName: name, isCustom: true, sessionCount: 1, unitPrice: undefined, controlDate: undefined },
+      { key: createId(), treatmentName: name, isCustom: true, sessionCount: 1, unitPrice: undefined, currency: "TRY", controlDate: undefined },
     ])
   }
 
@@ -123,6 +140,10 @@ function TreatmentPlanBuilder({
     setDraftTreatments((prev) => prev.map((row) => (row.key === key ? { ...row, unitPrice: price } : row)))
   }
 
+  function handleChangeCurrency(key: string, currency: CurrencyCode) {
+    setDraftTreatments((prev) => prev.map((row) => (row.key === key ? { ...row, currency } : row)))
+  }
+
   function handleChangeControlDate(key: string, controlDate: string | undefined) {
     setDraftTreatments((prev) => prev.map((row) => (row.key === key ? { ...row, controlDate } : row)))
   }
@@ -135,6 +156,7 @@ function TreatmentPlanBuilder({
       treatmentName: row.treatmentName,
       sessionCount: row.sessionCount,
       unitPrice: row.unitPrice,
+      currency: row.currency,
       controlDate: row.controlDate,
     }))
     setCommittedItems((prev) => [...prev, ...newItems])
@@ -202,7 +224,12 @@ function TreatmentPlanBuilder({
             <TreatmentPlanProviderStep
               providers={staffOptions}
               selectedProviderId={draftProvider?.id ?? null}
-              onSelect={setDraftProvider}
+              // Founder feedback: bu tek-seçimli adımda ayrıca "İleri"ye basmak
+              // gereksiz — sağlayıcı seçilir seçilmez Adım 2'ye otomatik geç.
+              onSelect={(provider) => {
+                setDraftProvider(provider)
+                setStep(2)
+              }}
             />
           )}
           {step === 2 && draftProvider && (
@@ -222,8 +249,9 @@ function TreatmentPlanBuilder({
             <TreatmentPlanPricingStep
               selections={draftTreatments}
               onChangeUnitPrice={handleChangeUnitPrice}
+              onChangeCurrency={handleChangeCurrency}
               onChangeControlDate={handleChangeControlDate}
-              committedTotal={committedTotal}
+              committedTotalsByCurrency={committedTotalsByCurrency}
             />
           )}
           {step === 5 && (

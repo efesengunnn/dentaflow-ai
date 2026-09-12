@@ -6,13 +6,17 @@ import { useState } from "react"
 import { EmptyState } from "@/components/shared/empty-state"
 import { Card, CardContent } from "@/components/ui/card"
 import type { AssignableStaff } from "@/lib/staff/queries"
+import { formatCurrency } from "@/lib/format/currency"
 import type { TreatmentPlanActor } from "@/lib/treatment-plans/permissions"
 import type { TreatmentPlanDetail } from "@/lib/treatment-plans/queries"
 import { TreatmentPlanDetailSheet } from "./treatment-plan-detail-sheet"
 import { TreatmentPlanStatusBadge } from "./treatment-plan-status-badge"
 
-function formatMoney(amount: number | null): string {
-  return amount === null ? "Belirlenmedi" : `${amount.toLocaleString("tr-TR")} ₺`
+/** Per-currency plan total for the list subtitle, e.g. "12.000 ₺ + 600 €". */
+function formatPlanTotals(plan: TreatmentPlanDetail): string {
+  const priced = plan.currencyTotals.filter((entry) => entry.total !== null)
+  if (priced.length === 0) return "Belirlenmedi"
+  return priced.map((entry) => formatCurrency(entry.total ?? 0, entry.currency)).join(" + ")
 }
 
 /**
@@ -66,7 +70,7 @@ function TreatmentPlanList({
                 <TreatmentPlanStatusBadge status={plan.status} />
               </div>
               <p className="text-sm text-muted-foreground">
-                {plan.items.length} kalem · {formatMoney(plan.totalAmount)}
+                {plan.items.length} kalem · {formatPlanTotals(plan)}
               </p>
             </CardContent>
           </Card>

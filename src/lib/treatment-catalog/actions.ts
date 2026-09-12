@@ -41,6 +41,7 @@ export async function createCatalogItem(values: CatalogItemFormValues): Promise<
     staff_id: parsed.data.staffId,
     treatment_type: parsed.data.treatmentType,
     default_price: parsed.data.defaultPrice ?? null,
+    currency: parsed.data.currency,
     created_by: staffMember.userId,
     updated_by: staffMember.userId,
   })
@@ -56,7 +57,7 @@ export async function createCatalogItem(values: CatalogItemFormValues): Promise<
 
 export async function updateCatalogItem(
   itemId: string,
-  values: Pick<CatalogItemFormValues, "treatmentType" | "defaultPrice">,
+  values: Pick<CatalogItemFormValues, "treatmentType" | "defaultPrice" | "currency">,
 ): Promise<CatalogActionState> {
   const staffMember = await getCurrentStaffMember()
   if (!staffMember) return { error: "Oturum bulunamadı." }
@@ -68,6 +69,7 @@ export async function updateCatalogItem(
     .update({
       treatment_type: values.treatmentType,
       default_price: values.defaultPrice ?? null,
+      currency: values.currency,
       updated_by: staffMember.userId,
     })
     .eq("id", itemId)

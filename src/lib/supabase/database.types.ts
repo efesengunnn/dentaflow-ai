@@ -699,6 +699,7 @@ export type Database = {
           clinic_id: string
           created_at: string
           created_by: string | null
+          currency: string
           default_price: number | null
           id: string
           is_active: boolean
@@ -711,6 +712,7 @@ export type Database = {
           clinic_id: string
           created_at?: string
           created_by?: string | null
+          currency?: string
           default_price?: number | null
           id?: string
           is_active?: boolean
@@ -723,6 +725,7 @@ export type Database = {
           clinic_id?: string
           created_at?: string
           created_by?: string | null
+          currency?: string
           default_price?: number | null
           id?: string
           is_active?: boolean
@@ -948,6 +951,7 @@ export type Database = {
           control_date: string | null
           created_at: string
           created_by: string
+          currency: string
           delete_reason: string | null
           deleted_at: string | null
           deleted_by: string | null
@@ -972,6 +976,7 @@ export type Database = {
           control_date?: string | null
           created_at?: string
           created_by: string
+          currency?: string
           delete_reason?: string | null
           deleted_at?: string | null
           deleted_by?: string | null
@@ -996,6 +1001,7 @@ export type Database = {
           control_date?: string | null
           created_at?: string
           created_by?: string
+          currency?: string
           delete_reason?: string | null
           deleted_at?: string | null
           deleted_by?: string | null

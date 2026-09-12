@@ -43,6 +43,40 @@ function deriveTotalAmount(items: { totalPrice: number | null }[]): number | nul
   return items.reduce((sum, item) => sum + (item.totalPrice ?? 0), 0)
 }
 
+/** One currency's slice of a plan's ledger (Sprint 31). `total` is `null` when no item in this currency has a price set yet ("Belirlenmedi"). */
+export type PlanCurrencyTotal = {
+  currency: string
+  total: number | null
+  paid: number
+  remaining: number | null
+}
+
+/**
+ * Per-currency total/paid/remaining for a plan (Sprint 31 — mixed-currency
+ * plans are allowed). Items are grouped by their own currency for the total,
+ * payments by their currency for paid; figures are never summed across
+ * currencies (you can't add ₺ to €). TRY is listed first, then others
+ * alphabetically, for a stable render order.
+ */
+export function deriveCurrencyTotals(
+  items: { currency: string; totalPrice: number | null }[],
+  payments: { currency: string; amount: number; entryType: TreatmentPaymentEntryType }[],
+): PlanCurrencyTotal[] {
+  const currencies = new Set<string>()
+  for (const item of items) currencies.add(item.currency)
+  for (const payment of payments) currencies.add(payment.currency)
+
+  return Array.from(currencies)
+    .map((currency) => {
+      const total = deriveTotalAmount(items.filter((item) => item.currency === currency))
+      const paid = sumPaymentLedger(payments.filter((payment) => payment.currency === currency))
+      return { currency, total, paid, remaining: deriveRemainingBalance(total, paid) }
+    })
+    .sort((a, b) =>
+      a.currency === "TRY" ? -1 : b.currency === "TRY" ? 1 : a.currency.localeCompare(b.currency),
+    )
+}
+
 function daysBetween(isoDate: string, to: Date): number {
   return Math.floor((to.getTime() - new Date(isoDate).getTime()) / (1000 * 60 * 60 * 24))
 }
@@ -241,6 +275,8 @@ export type TreatmentPlanItemDetail = {
   remainingSessions: number
   unitPrice: number | null
   totalPrice: number | null
+  /** Sprint 31 — item-level currency (TRY/EUR); unitPrice/totalPrice are in this currency. */
+  currency: string
   /** Owner-only revenue attribution (Sprint 28A decision) — callers must gate rendering on the viewer's role themselves, this query never does. */
   providerShareAmount: number | null
   /** Sprint 30.3 — planned follow-up date, set at definition time (optional). Distinct from a session's own `controlDate`, recorded retroactively at completion. */
@@ -256,10 +292,12 @@ export type TreatmentPlanDetail = {
   planName: string
   currency: string
   status: TreatmentLifecycleStatus
-  /** Always `SUM(items.totalPrice)` — see `deriveTotalAmount`. */
+  /** Always `SUM(items.totalPrice)` — see `deriveTotalAmount`. Cross-currency sum; only meaningful for a single-currency plan. Prefer `currencyTotals` for display. */
   totalAmount: number | null
   paidAmount: number
   remainingBalance: number | null
+  /** Sprint 31 — per-currency total/paid/remaining; the source of truth for display now that a plan can mix currencies. */
+  currencyTotals: PlanCurrencyTotal[]
   createdAt: string
   items: TreatmentPlanItemDetail[]
   payments: TreatmentPlanPaymentRow[]
@@ -291,7 +329,7 @@ async function loadTreatmentPlanDetails(
   let itemQuery = supabase
     .from("treatment_plan_items")
     .select(
-      "id, treatment_plan_id, provider_id, treatment_name, session_count, unit_price, total_price, provider_share_amount, control_date, status, revision_no, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name)",
+      "id, treatment_plan_id, provider_id, treatment_name, session_count, unit_price, total_price, currency, provider_share_amount, control_date, status, revision_no, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name)",
     )
     .in("treatment_plan_id", planIds)
   if (!includeDeleted) itemQuery = itemQuery.is("deleted_at", null)
@@ -368,6 +406,7 @@ async function loadTreatmentPlanDetails(
       remainingSessions: Math.max(row.session_count - completedSessions, 0),
       unitPrice: row.unit_price,
       totalPrice: row.total_price,
+      currency: row.currency,
       providerShareAmount: row.provider_share_amount,
       controlDate: row.control_date,
       status: row.status,
@@ -394,6 +433,7 @@ async function loadTreatmentPlanDetails(
       totalAmount,
       paidAmount,
       remainingBalance: deriveRemainingBalance(totalAmount, paidAmount),
+      currencyTotals: deriveCurrencyTotals(planItems, planPayments),
       createdAt: row.created_at,
       items: planItems,
       payments: planPayments,
@@ -786,11 +826,11 @@ export type AppointmentLinkedTreatmentPlanItem = {
    * progress but nothing about money — no total, no paid/remaining, no way to
    * take payment — even though the plan carried a price and payments existed.
    * Same per-plan ledger math as `PatientPaymentsSection` / `getTreatmentPlanDetail`.
+   *
+   * Sprint 31 — per currency now (a plan can mix TRY + EUR items), so the
+   * panel shows one Toplam/Ödenen/Kalan row-set per currency.
    */
-  totalAmount: number | null
-  paidAmount: number
-  remainingBalance: number | null
-  currency: string
+  currencyTotals: PlanCurrencyTotal[]
 }
 
 export async function getAppointmentLinkedTreatmentPlanItem(
@@ -834,25 +874,25 @@ export async function getAppointmentLinkedTreatmentPlanItem(
         .is("deleted_at", null)
         .maybeSingle(),
       // Plan-level financials — the payment ledger lives per plan, not per
-      // item, so the total is summed over every item in the plan and the paid
-      // amount over every payment against the plan (same rule as
-      // `getTreatmentPlanDetail`), not just this one linked item.
+      // item, so figures are computed over every item/payment in the plan
+      // (same rule as `getTreatmentPlanDetail`), not just this one linked
+      // item, and grouped per currency (a plan can mix TRY + EUR).
       supabase
         .from("treatment_plan_items")
-        .select("total_price")
+        .select("total_price, currency")
         .eq("treatment_plan_id", item.treatment_plan_id)
         .is("deleted_at", null),
       supabase
         .from("treatment_payments")
-        .select("amount, entry_type")
+        .select("amount, entry_type, currency")
         .eq("treatment_plan_id", item.treatment_plan_id),
     ])
 
   const completed = completedCount ?? 0
 
-  const totalAmount = deriveTotalAmount((planItems ?? []).map((row) => ({ totalPrice: row.total_price })))
-  const paidAmount = sumPaymentLedger(
-    (planPayments ?? []).map((row) => ({ amount: row.amount, entryType: row.entry_type })),
+  const currencyTotals = deriveCurrencyTotals(
+    (planItems ?? []).map((row) => ({ currency: row.currency, totalPrice: row.total_price })),
+    (planPayments ?? []).map((row) => ({ currency: row.currency, amount: row.amount, entryType: row.entry_type })),
   )
 
   return {
@@ -867,9 +907,6 @@ export async function getAppointmentLinkedTreatmentPlanItem(
     remainingSessions: Math.max(item.session_count - completed, 0),
     itemStatus: item.status,
     hasCompletedSessionForAppointment: appointmentSession !== null,
-    totalAmount,
-    paidAmount,
-    remainingBalance: deriveRemainingBalance(totalAmount, paidAmount),
-    currency: item.plan?.currency ?? "TRY",
+    currencyTotals,
   }
 }

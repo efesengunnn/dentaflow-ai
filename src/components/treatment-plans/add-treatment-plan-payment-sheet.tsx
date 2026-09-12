@@ -13,16 +13,16 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { TreatmentPlanPaymentForm } from "./treatment-plan-payment-form"
+import { TreatmentPlanPaymentForm, type CurrencyBalance } from "./treatment-plan-payment-form"
 
 function AddTreatmentPlanPaymentSheet({
   treatmentPlanId,
-  remainingBalance,
+  currencyBalances,
   onSuccess,
   trigger,
 }: {
   treatmentPlanId: string
-  remainingBalance: number | null
+  currencyBalances: CurrencyBalance[]
   onSuccess?: () => void
   trigger?: ReactNode
 }) {
@@ -46,7 +46,7 @@ function AddTreatmentPlanPaymentSheet({
         <div className="px-4 pb-4">
           <TreatmentPlanPaymentForm
             treatmentPlanId={treatmentPlanId}
-            remainingBalance={remainingBalance}
+            currencyBalances={currencyBalances}
             onSuccess={() => {
               setOpen(false)
               onSuccess?.()

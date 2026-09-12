@@ -13,6 +13,13 @@ import { FormField } from "@/components/ui/form-field"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -21,6 +28,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import { CURRENCY_OPTIONS } from "@/lib/format/currency"
 import { createCatalogItem, updateCatalogItem } from "@/lib/treatment-catalog/actions"
 import { catalogItemFormSchema, type CatalogItemFormValues } from "@/lib/treatment-catalog/schema"
 import type { CatalogItem } from "@/lib/treatment-catalog/queries"
@@ -44,12 +52,17 @@ function TreatmentCatalogItemSheet({ staffId, staffName, item, trigger }: Treatm
       staffId,
       treatmentType: item?.treatmentType ?? "",
       defaultPrice: item?.defaultPrice ?? undefined,
+      currency: (item?.currency as "TRY" | "EUR" | undefined) ?? "TRY",
     },
   })
 
   const handleSubmit = form.handleSubmit(async (values) => {
     const result = isEditing
-      ? await updateCatalogItem(item.id, { treatmentType: values.treatmentType, defaultPrice: values.defaultPrice })
+      ? await updateCatalogItem(item.id, {
+          treatmentType: values.treatmentType,
+          defaultPrice: values.defaultPrice,
+          currency: values.currency,
+        })
       : await createCatalogItem(values)
 
     if (result?.error) {
@@ -63,7 +76,7 @@ function TreatmentCatalogItemSheet({ staffId, staffName, item, trigger }: Treatm
     }
     toast.success(isEditing ? "Tedavi güncellendi." : "Tedavi eklendi.")
     setOpen(false)
-    if (!isEditing) form.reset({ staffId, treatmentType: "", defaultPrice: undefined })
+    if (!isEditing) form.reset({ staffId, treatmentType: "", defaultPrice: undefined, currency: "TRY" })
   })
 
   return (
@@ -71,7 +84,7 @@ function TreatmentCatalogItemSheet({ staffId, staffName, item, trigger }: Treatm
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
-        if (!next) form.reset({ staffId, treatmentType: item?.treatmentType ?? "", defaultPrice: item?.defaultPrice ?? undefined })
+        if (!next) form.reset({ staffId, treatmentType: item?.treatmentType ?? "", defaultPrice: item?.defaultPrice ?? undefined, currency: (item?.currency as "TRY" | "EUR" | undefined) ?? "TRY" })
       }}
     >
       <SheetTrigger asChild>
@@ -94,6 +107,25 @@ function TreatmentCatalogItemSheet({ staffId, staffName, item, trigger }: Treatm
               name="treatmentType"
               label="Tedavi Türü"
               render={({ field }) => <Input {...field} placeholder="Örn. Botoks" />}
+            />
+            <FormField
+              control={form.control}
+              name="currency"
+              label="Para Birimi"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             />
             <FormField
               control={form.control}

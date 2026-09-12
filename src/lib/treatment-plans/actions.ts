@@ -134,6 +134,7 @@ export async function createTreatmentPlan(values: TreatmentPlanFormValues): Prom
     session_count: item.sessionCount,
     unit_price: item.unitPrice ?? null,
     total_price: item.unitPrice !== undefined ? item.unitPrice * item.sessionCount : null,
+    currency: item.currency,
     control_date: item.controlDate || null,
     created_by: staffMember.userId,
     updated_by: staffMember.userId,
@@ -741,6 +742,7 @@ export async function recordTreatmentPlanPayment(
       amount: parsed.data.amount,
       entry_type: "payment",
       method: parsed.data.method,
+      currency: parsed.data.currency,
       paid_at: parsed.data.paidAt,
       note: parsed.data.note || null,
       recorded_by: staffMember.userId,
@@ -798,6 +800,15 @@ export async function recordTreatmentPlanPaymentCorrection(
 
   if (planError || !plan) return { error: "Tedavi planı bulunamadı." }
 
+  // A correction (refund/adjustment) is always in the same currency as the
+  // payment it references — never re-picked by the user, so it can't drift
+  // from the original and skew a per-currency balance.
+  const { data: relatedPayment } = await supabase
+    .from("treatment_payments")
+    .select("currency")
+    .eq("id", parsed.data.relatedPaymentId)
+    .maybeSingle()
+
   const { data: correction, error: insertError } = await supabase
     .from("treatment_payments")
     .insert({
@@ -807,6 +818,7 @@ export async function recordTreatmentPlanPaymentCorrection(
       amount: parsed.data.amount,
       entry_type: parsed.data.entryType,
       method: parsed.data.method,
+      currency: relatedPayment?.currency ?? "TRY",
       paid_at: parsed.data.paidAt,
       note: parsed.data.note || null,
       recorded_by: staffMember.userId,

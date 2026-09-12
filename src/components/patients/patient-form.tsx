@@ -18,8 +18,16 @@ import { FormField } from "@/components/ui/form-field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MoneyInput } from "@/components/ui/money-input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { TimeSelect } from "@/components/ui/time-select"
+import { CURRENCY_OPTIONS, formatCurrency, type CurrencyCode } from "@/lib/format/currency"
 import { dateStringToLocalDate, localDateToDateString } from "@/lib/format/date"
 import { checkDuplicatePatientByPhone, type PatientActionState } from "@/lib/patients/actions"
 import {
@@ -99,6 +107,7 @@ function PatientForm({
     setIsCustomTreatment(false)
     form.setValue("treatmentType", item.treatmentType)
     if (item.defaultPrice !== null) form.setValue("totalFee", item.defaultPrice)
+    form.setValue("treatmentCurrency", item.currency as CurrencyCode)
   }
 
   function handleCustomTreatment() {
@@ -241,7 +250,7 @@ function PatientForm({
                         value: item.id,
                         label:
                           item.defaultPrice !== null
-                            ? `${item.treatmentType} · ${item.defaultPrice.toLocaleString("tr-TR")} TRY`
+                            ? `${item.treatmentType} · ${formatCurrency(item.defaultPrice, item.currency)}`
                             : item.treatmentType,
                       }))}
                       value={selectedCatalogId}
@@ -261,14 +270,37 @@ function PatientForm({
                     render={({ field }) => <Input {...field} placeholder="Örn. Botoks" />}
                   />
                 )}
-                <FormField
-                  control={form.control}
-                  name="totalFee"
-                  label="Ücret (opsiyonel)"
-                  render={({ field }) => (
-                    <MoneyInput value={field.value} onChange={field.onChange} placeholder="Belirlenmedi" />
-                  )}
-                />
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <FormField
+                      control={form.control}
+                      name="totalFee"
+                      label="Ücret (opsiyonel)"
+                      render={({ field }) => (
+                        <MoneyInput value={field.value} onChange={field.onChange} placeholder="Belirlenmedi" />
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="treatmentCurrency"
+                    label="Para Birimi"
+                    render={({ field }) => (
+                      <Select value={field.value ?? "TRY"} onValueChange={field.onChange}>
+                        <SelectTrigger className="w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CURRENCY_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
               </div>
             )}
           </div>

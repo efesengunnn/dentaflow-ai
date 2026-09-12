@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SearchInput } from "@/components/ui/search-input"
+import { formatCurrency } from "@/lib/format/currency"
 import type { CatalogItem } from "@/lib/treatment-catalog/queries"
 import type { DraftTreatmentSelection } from "./treatment-plan-builder"
 
@@ -30,7 +31,7 @@ function TreatmentPlanTreatmentsStep({
   providerName: string
   catalog: CatalogItem[]
   selections: DraftTreatmentSelection[]
-  onToggleCatalogItem: (treatmentName: string) => void
+  onToggleCatalogItem: (treatmentName: string, currency: string) => void
   onAddCustom: (name: string) => void
   onRemoveCustom: (key: string) => void
 }) {
@@ -87,8 +88,11 @@ function TreatmentPlanTreatmentsStep({
                 className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-2 transition-colors duration-150 hover:bg-muted/40 has-[[data-checked]]:bg-primary/5"
               >
                 <span className="flex items-center gap-3">
-                  <Checkbox checked={checked} onCheckedChange={() => onToggleCatalogItem(item.treatmentType)} />
+                  <Checkbox checked={checked} onCheckedChange={() => onToggleCatalogItem(item.treatmentType, item.currency)} />
                   <span className="font-medium">{item.treatmentType}</span>
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                  {item.defaultPrice !== null ? formatCurrency(item.defaultPrice, item.currency) : item.currency}
                 </span>
               </Label>
             )

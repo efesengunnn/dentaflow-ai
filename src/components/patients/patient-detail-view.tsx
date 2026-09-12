@@ -121,12 +121,15 @@ function PatientDetailView({
   // Sprint 29 — "Ödemeler" bölümünün "Ödeme Ekle" seçenekleri: yeni sistemin
   // ödenebilir (voided olmayan, kalan bakiyesi olan/belirsiz) planları.
   const payablePlans = treatmentPlans
-    .filter((plan) => plan.status !== "voided" && (plan.remainingBalance === null || plan.remainingBalance > 0))
+    .filter(
+      (plan) =>
+        plan.status !== "voided" &&
+        plan.currencyTotals.some((entry) => entry.remaining === null || entry.remaining > 0),
+    )
     .map((plan) => ({
       id: plan.id,
       planName: plan.planName,
-      remainingBalance: plan.remainingBalance,
-      currency: plan.currency,
+      currencyBalances: plan.currencyTotals.map((entry) => ({ currency: entry.currency, remaining: entry.remaining })),
     }))
 
   // Sprint 24 — "Sonraki Randevu" moved out of this strip into the

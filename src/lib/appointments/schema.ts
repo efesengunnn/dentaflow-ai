@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import type { AppointmentStatus } from "@/lib/appointments/constants"
+import { SUPPORTED_CURRENCIES } from "@/lib/format/currency"
 import { localDateToDateString } from "@/lib/format/date"
 
 const APPOINTMENT_STATUS_VALUES = [
@@ -43,6 +44,8 @@ export const appointmentFormSchema = z
     /** "Tek Seans / Tek İşlem" — set together with `standalonePrice`, never alongside `treatmentPlanId`. */
     standaloneTreatmentName: z.string().trim().max(120, "İşlem adı 120 karakteri geçemez.").optional(),
     standalonePrice: z.number().min(0, "Fiyat negatif olamaz.").optional(),
+    /** Sprint 31 — currency for the standalone treatment's price (TRY/EUR), carried into the hidden single-item plan. Required (form supplies "TRY" via defaults). */
+    standaloneCurrency: z.enum(SUPPORTED_CURRENCIES),
     /** Planned follow-up date — package flow'daki gibi hasta + kalem/randevu bazında, opsiyonel. */
     controlDate: z.string().optional(),
   })
@@ -69,6 +72,7 @@ export const appointmentFormDefaults: AppointmentFormValues = {
   treatmentPlanItemId: "",
   standaloneTreatmentName: "",
   standalonePrice: undefined,
+  standaloneCurrency: "TRY",
   controlDate: "",
 }
 

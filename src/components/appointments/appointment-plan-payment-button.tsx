@@ -4,6 +4,7 @@ import { Wallet } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 import { AddTreatmentPlanPaymentSheet } from "@/components/treatment-plans/add-treatment-plan-payment-sheet"
+import type { CurrencyBalance } from "@/components/treatment-plans/treatment-plan-payment-form"
 import { Button } from "@/components/ui/button"
 
 /**
@@ -16,17 +17,17 @@ import { Button } from "@/components/ui/button"
  */
 function AppointmentPlanPaymentButton({
   treatmentPlanId,
-  remainingBalance,
+  currencyBalances,
 }: {
   treatmentPlanId: string
-  remainingBalance: number | null
+  currencyBalances: CurrencyBalance[]
 }) {
   const router = useRouter()
 
   return (
     <AddTreatmentPlanPaymentSheet
       treatmentPlanId={treatmentPlanId}
-      remainingBalance={remainingBalance}
+      currencyBalances={currencyBalances}
       onSuccess={() => router.refresh()}
       trigger={
         <Button size="sm" variant="outline">

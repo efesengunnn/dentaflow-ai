@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { SUPPORTED_CURRENCIES } from "@/lib/format/currency"
+
 const TREATMENT_PAYMENT_METHOD_VALUES = ["cash", "credit_card", "bank_transfer", "other"] as const
 const TREATMENT_PAYMENT_CORRECTION_TYPE_VALUES = ["refund", "adjustment"] as const
 
@@ -20,6 +22,8 @@ export const treatmentPlanItemInputSchema = z.object({
   sessionCount: z.number().int().min(1, "En az 1 seans olmalı.").max(999, "Geçerli bir seans sayısı girin."),
   /** Optional — a phone-sold plan's price may not be negotiated yet. `undefined` renders as "Belirlenmedi", never a fake `0`. */
   unitPrice: z.number().min(0, "Fiyat negatif olamaz.").optional(),
+  /** Sprint 31 — item-level currency (TRY/EUR); a plan may mix currencies. Carried from the catalog item, or chosen for a custom treatment. Required so callers always state it explicitly. */
+  currency: z.enum(SUPPORTED_CURRENCIES),
   /** Sprint 30.3 — planned follow-up date for this specific patient's item, set at definition time. Always patient+item specific, never a fixed per-treatment-type default. */
   controlDate: z.string().optional(),
 })
@@ -96,6 +100,8 @@ export type VoidSessionFormValues = z.infer<typeof voidSessionFormSchema>
 export const treatmentPlanPaymentFormSchema = z.object({
   treatmentPlanId: z.string().min(1, "Plan seçin."),
   amount: z.number().positive("Tutar 0'dan büyük olmalı."),
+  /** Sprint 31 — which currency this payment is in; a mixed plan owes in more than one, so the payer must say which balance this pays down. Required (form supplies it via defaultValues). */
+  currency: z.enum(SUPPORTED_CURRENCIES),
   method: z.enum(TREATMENT_PAYMENT_METHOD_VALUES, { message: "Ödeme yöntemi seçin." }),
   paidAt: z.string().min(1, "Tarih seçin."),
   note: z.string().trim().max(500, "Not 500 karakteri geçemez.").optional(),

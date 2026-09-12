@@ -22,14 +22,15 @@ import {
   canDeleteTreatmentSession,
   type TreatmentPlanActor,
 } from "@/lib/treatment-plans/permissions"
+import { formatCurrency } from "@/lib/format/currency"
 import type { TreatmentPlanItemDetail, TreatmentSessionRow } from "@/lib/treatment-plans/queries"
 import { CompleteSessionSheet } from "./complete-session-sheet"
 import { SessionCorrectionSheet } from "./session-correction-sheet"
 import { SessionVoidDialog } from "./session-void-dialog"
 import { TreatmentPlanStatusBadge } from "./treatment-plan-status-badge"
 
-function formatMoney(amount: number | null): string {
-  return amount === null ? "Belirlenmedi" : `${amount.toLocaleString("tr-TR")} ₺`
+function formatMoney(amount: number | null, currency: string): string {
+  return amount === null ? "Belirlenmedi" : formatCurrency(amount, currency)
 }
 
 /**
@@ -140,11 +141,11 @@ function TreatmentPlanItemCard({
         <InfoGrid
           compact
           items={[
-            { label: "Birim Fiyat", value: formatMoney(item.unitPrice) },
-            { label: "Toplam", value: formatMoney(item.totalPrice) },
+            { label: "Birim Fiyat", value: formatMoney(item.unitPrice, item.currency) },
+            { label: "Toplam", value: formatMoney(item.totalPrice, item.currency) },
             { label: "Kalan Seans", value: item.remainingSessions },
             ...(isOwner && item.providerShareAmount != null
-              ? [{ label: "Sağlayıcı Payı", value: formatMoney(item.providerShareAmount) }]
+              ? [{ label: "Sağlayıcı Payı", value: formatMoney(item.providerShareAmount, item.currency) }]
               : []),
           ]}
         />

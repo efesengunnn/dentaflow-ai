@@ -9,6 +9,14 @@ import { CollapsibleToggleTrigger } from "@/components/shared/collapsible-toggle
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { CURRENCY_OPTIONS, formatCurrency, type CurrencyCode } from "@/lib/format/currency"
 import { ControlDateField } from "@/components/treatment-plans/treatment-plan-pricing-step"
 import { TreatmentPlanProviderStep } from "@/components/treatment-plans/treatment-plan-provider-step"
 import type { AppointmentFormValues } from "@/lib/appointments/schema"
@@ -66,6 +74,7 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
   const [singleCustomOpen, setSingleCustomOpen] = useState(false)
   const [singleCustomName, setSingleCustomName] = useState("")
   const [singlePrice, setSinglePrice] = useState<number | undefined>(undefined)
+  const [singleCurrency, setSingleCurrency] = useState<CurrencyCode>("TRY")
   const [singleControlDate, setSingleControlDate] = useState<string | undefined>(undefined)
 
   const loading = open && mode === "package" && Boolean(patientId) && loadedForPatientId !== patientId
@@ -77,6 +86,7 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
     setValue("staffId", "")
     setValue("standaloneTreatmentName", "")
     setValue("standalonePrice", undefined)
+    setValue("standaloneCurrency", "TRY")
     setValue("controlDate", "")
   }
 
@@ -134,6 +144,7 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
     setSingleCustomOpen(false)
     setSingleCustomName("")
     setSinglePrice(undefined)
+    setSingleCurrency("TRY")
     setSingleControlDate(undefined)
   }
 
@@ -148,21 +159,28 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
     setValue("staffId", provider.id)
   }
 
-  function selectSingleTreatment(name: string) {
+  function selectSingleTreatment(name: string, currency: CurrencyCode) {
     setSingleTreatmentName(name)
+    setSingleCurrency(currency)
     setValue("standaloneTreatmentName", name)
+    setValue("standaloneCurrency", currency)
   }
 
   function confirmSingleCustomTreatment() {
     const trimmed = singleCustomName.trim()
     if (!trimmed) return
-    selectSingleTreatment(trimmed)
+    selectSingleTreatment(trimmed, "TRY")
     setSingleCustomOpen(false)
   }
 
   function changeSinglePrice(value: number | undefined) {
     setSinglePrice(value)
     setValue("standalonePrice", value)
+  }
+
+  function changeSingleCurrency(currency: CurrencyCode) {
+    setSingleCurrency(currency)
+    setValue("standaloneCurrency", currency)
   }
 
   function changeSingleControlDate(value: string | undefined) {
@@ -271,13 +289,16 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => selectSingleTreatment(item.treatmentType)}
+                          onClick={() => selectSingleTreatment(item.treatmentType, item.currency as CurrencyCode)}
                           className={cn(
-                            "flex min-h-11 items-center rounded-lg border p-3 text-left text-sm font-medium transition-colors duration-150 hover:bg-muted/40",
+                            "flex min-h-11 items-center justify-between gap-3 rounded-lg border p-3 text-left text-sm font-medium transition-colors duration-150 hover:bg-muted/40",
                             checked ? "border-primary bg-primary/5" : "border-border",
                           )}
                         >
-                          {item.treatmentType}
+                          <span>{item.treatmentType}</span>
+                          <span className="shrink-0 text-xs font-normal text-muted-foreground tabular-nums">
+                            {item.defaultPrice !== null ? formatCurrency(item.defaultPrice, item.currency) : item.currency}
+                          </span>
                         </button>
                       )
                     })}
@@ -340,7 +361,21 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
                     <X className="size-4" />
                   </Button>
                 </div>
-                <MoneyInput value={singlePrice} onChange={changeSinglePrice} placeholder="Fiyat" />
+                <div className="flex items-center gap-2">
+                  <MoneyInput value={singlePrice} onChange={changeSinglePrice} placeholder="Fiyat" className="flex-1" />
+                  <Select value={singleCurrency} onValueChange={(value) => changeSingleCurrency(value as CurrencyCode)}>
+                    <SelectTrigger className="w-24 shrink-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <ControlDateField value={singleControlDate} onChange={changeSingleControlDate} anchorDate={controlDateAnchor} />
               </div>
             )}

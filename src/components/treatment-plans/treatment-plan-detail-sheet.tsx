@@ -25,16 +25,13 @@ import {
   canRecordPayment,
   type TreatmentPlanActor,
 } from "@/lib/treatment-plans/permissions"
+import { currencySymbol, formatCurrency } from "@/lib/format/currency"
 import type { TreatmentPlanDetail, TreatmentPlanItemDetail } from "@/lib/treatment-plans/queries"
 import { AddTreatmentPlanPaymentSheet } from "./add-treatment-plan-payment-sheet"
 import { TreatmentPlanItemCard } from "./treatment-plan-item-card"
 import { TreatmentPlanItemEditSheet } from "./treatment-plan-item-edit-sheet"
 import { TreatmentPlanPaymentCorrectionSheet } from "./treatment-plan-payment-correction-sheet"
 import { TreatmentPlanStatusBadge } from "./treatment-plan-status-badge"
-
-function formatMoney(amount: number): string {
-  return `${amount.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`
-}
 
 /**
  * Plan Detail Sheet — hasta kartındaki plan listesinden açılır. Sprint 28C:
@@ -92,14 +89,22 @@ function TreatmentPlanDetailSheet({
             <Separator />
 
             <InfoGrid
-              items={[
-                { label: "Toplam", value: plan.totalAmount === null ? "Belirlenmedi" : formatMoney(plan.totalAmount) },
-                { label: "Ödenen", value: formatMoney(plan.paidAmount) },
-                {
-                  label: "Kalan",
-                  value: plan.remainingBalance === null ? "Belirlenmedi" : formatMoney(plan.remainingBalance),
-                },
-              ]}
+              items={
+                plan.currencyTotals.length === 0
+                  ? [
+                      { label: "Toplam", value: "Belirlenmedi" },
+                      { label: "Ödenen", value: formatCurrency(0, "TRY") },
+                      { label: "Kalan", value: "Belirlenmedi" },
+                    ]
+                  : plan.currencyTotals.flatMap((entry) => {
+                      const suffix = plan.currencyTotals.length > 1 ? ` (${currencySymbol(entry.currency)})` : ""
+                      return [
+                        { label: `Toplam${suffix}`, value: entry.total === null ? "Belirlenmedi" : formatCurrency(entry.total, entry.currency) },
+                        { label: `Ödenen${suffix}`, value: formatCurrency(entry.paid, entry.currency) },
+                        { label: `Kalan${suffix}`, value: entry.remaining === null ? "Belirlenmedi" : formatCurrency(entry.remaining, entry.currency) },
+                      ]
+                    })
+              }
             />
 
             <Separator />
@@ -110,7 +115,10 @@ function TreatmentPlanDetailSheet({
                 {canRecordPayment(actor) && (
                   <AddTreatmentPlanPaymentSheet
                     treatmentPlanId={plan.id}
-                    remainingBalance={plan.remainingBalance}
+                    currencyBalances={plan.currencyTotals.map((entry) => ({
+                      currency: entry.currency,
+                      remaining: entry.remaining,
+                    }))}
                     onSuccess={() => router.refresh()}
                   />
                 )}
@@ -124,7 +132,7 @@ function TreatmentPlanDetailSheet({
                     <div key={payment.id} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                       <span className="min-w-0 truncate">
                         {format(new Date(payment.paidAt), "d MMM yyyy", { locale: tr })} ·{" "}
-                        {formatMoney(payment.amount)} · {TREATMENT_PAYMENT_METHOD_LABELS[payment.method]}
+                        {formatCurrency(payment.amount, payment.currency)} · {TREATMENT_PAYMENT_METHOD_LABELS[payment.method]}
                       </span>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {payment.entryType !== "payment" && (
