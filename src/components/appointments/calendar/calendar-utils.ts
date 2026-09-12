@@ -1,7 +1,7 @@
 import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns"
 
 import { dateStringToLocalDate, localDateToDateString } from "@/lib/format/date"
-import type { AppointmentListRow } from "@/lib/appointments/queries"
+import type { AppointmentListRow, CalendarControlEntry } from "@/lib/appointments/queries"
 
 /** Turkish work week starts Monday, not Sunday — matches `date-fns`'s `weekStartsOn` convention. */
 const WEEK_STARTS_ON = 1
@@ -60,6 +60,24 @@ export function groupAppointmentsByDay(
 
 export function dayKey(date: Date): string {
   return localDateToDateString(date)
+}
+
+/**
+ * Groups control markers (Sprint 31) by day. `controlDate` is already a
+ * `yyyy-mm-dd` string in the exact same shape `dayKey` produces, so it is the
+ * grouping key directly — no `new Date(...)` round-trip (which would risk a
+ * timezone-shifted day, unlike appointments whose `startsAt` is a real instant).
+ */
+export function groupControlEntriesByDay(
+  entries: CalendarControlEntry[],
+): Map<string, CalendarControlEntry[]> {
+  const map = new Map<string, CalendarControlEntry[]>()
+  for (const entry of entries) {
+    const existing = map.get(entry.controlDate)
+    if (existing) existing.push(entry)
+    else map.set(entry.controlDate, [entry])
+  }
+  return map
 }
 
 export function parseAnchor(anchor: string | undefined): Date {

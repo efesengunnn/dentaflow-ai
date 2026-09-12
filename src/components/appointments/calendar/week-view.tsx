@@ -6,9 +6,10 @@ import { tr } from "date-fns/locale"
 import { EmptyState } from "@/components/shared/empty-state"
 import { cn } from "@/lib/utils"
 import { CalendarDays } from "lucide-react"
-import type { AppointmentListRow } from "@/lib/appointments/queries"
-import { dayKey, enumerateDays, groupAppointmentsByDay, type DateRange } from "./calendar-utils"
+import type { AppointmentListRow, CalendarControlEntry } from "@/lib/appointments/queries"
+import { dayKey, enumerateDays, groupAppointmentsByDay, groupControlEntriesByDay, type DateRange } from "./calendar-utils"
 import { AppointmentChip } from "./appointment-chip"
+import { ControlChip } from "./control-chip"
 import { DayAppointmentsPopover } from "./day-appointments-popover"
 
 const MAX_VISIBLE_PER_DAY = 3
@@ -35,16 +36,19 @@ const MAX_VISIBLE_PER_DAY = 3
 function WeekView({
   range,
   rows,
+  controlEntries,
   selectedDay,
   onDayClick,
 }: {
   range: DateRange
   rows: AppointmentListRow[]
+  controlEntries: CalendarControlEntry[]
   selectedDay: Date
-  onDayClick: (day: Date, hasAppointments: boolean) => void
+  onDayClick: (day: Date, hasContent: boolean) => void
 }) {
   const days = enumerateDays(range)
   const byDay = groupAppointmentsByDay(rows)
+  const controlsByDay = groupControlEntriesByDay(controlEntries)
 
   return (
     <>
@@ -53,26 +57,27 @@ function WeekView({
           {days.map((day) => {
             const key = dayKey(day)
             const dayAppointments = byDay.get(key) ?? []
+            const dayControls = controlsByDay.get(key) ?? []
             const visible = dayAppointments.slice(0, MAX_VISIBLE_PER_DAY)
             const overflow = dayAppointments.slice(MAX_VISIBLE_PER_DAY)
-            const hasAppointments = dayAppointments.length > 0
+            const hasContent = dayAppointments.length > 0 || dayControls.length > 0
             const selected = isSameDay(day, selectedDay)
             return (
               <div
                 key={key}
                 role="button"
                 tabIndex={0}
-                onClick={() => onDayClick(day, hasAppointments)}
+                onClick={() => onDayClick(day, hasContent)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault()
-                    onDayClick(day, hasAppointments)
+                    onDayClick(day, hasContent)
                   }
                 }}
                 className={cn(
                   "outline-none flex min-h-64 cursor-pointer flex-col gap-1.5 border-b border-r p-2 transition-colors [&:nth-child(7n)]:border-r-0",
                   "hover:bg-muted/40 focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:-outline-offset-2",
-                  hasAppointments && "bg-primary/5",
+                  hasContent && "bg-primary/5",
                   selected && "ring-primary ring-2 ring-inset",
                 )}
               >
@@ -100,6 +105,9 @@ function WeekView({
                   {overflow.length > 0 && (
                     <DayAppointmentsPopover date={day} appointments={overflow} />
                   )}
+                  {dayControls.map((entry) => (
+                    <ControlChip key={`control-${entry.sourceAppointmentId}`} entry={entry} />
+                  ))}
                 </div>
               </div>
             )
@@ -111,6 +119,7 @@ function WeekView({
         {days.map((day) => {
           const key = dayKey(day)
           const dayAppointments = byDay.get(key) ?? []
+          const dayControls = controlsByDay.get(key) ?? []
           return (
             <div key={key} className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
@@ -124,19 +133,22 @@ function WeekView({
                 </span>
                 <span className="text-sm font-medium">{format(day, "EEEE", { locale: tr })}</span>
               </div>
-              {dayAppointments.length === 0 ? (
+              {dayAppointments.length === 0 && dayControls.length === 0 ? (
                 <p className="pl-9 text-sm text-muted-foreground">Randevu yok</p>
               ) : (
                 <div className="flex flex-col gap-1.5 pl-9">
                   {dayAppointments.map((appointment) => (
                     <AppointmentChip key={appointment.id} appointment={appointment} />
                   ))}
+                  {dayControls.map((entry) => (
+                    <ControlChip key={`control-${entry.sourceAppointmentId}`} entry={entry} />
+                  ))}
                 </div>
               )}
             </div>
           )
         })}
-        {rows.length === 0 && (
+        {rows.length === 0 && controlEntries.length === 0 && (
           <EmptyState
             icon={CalendarDays}
             title="Bu hafta randevu yok"

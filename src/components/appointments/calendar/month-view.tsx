@@ -3,9 +3,10 @@
 import { format, isSameDay, isSameMonth, isToday } from "date-fns"
 
 import { cn } from "@/lib/utils"
-import type { AppointmentListRow } from "@/lib/appointments/queries"
-import { dayKey, enumerateDays, groupAppointmentsByDay, type DateRange } from "./calendar-utils"
+import type { AppointmentListRow, CalendarControlEntry } from "@/lib/appointments/queries"
+import { dayKey, enumerateDays, groupAppointmentsByDay, groupControlEntriesByDay, type DateRange } from "./calendar-utils"
 import { AppointmentChip } from "./appointment-chip"
+import { ControlChip } from "./control-chip"
 import { DayAppointmentsPopover } from "./day-appointments-popover"
 
 const WEEKDAY_LABELS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
@@ -28,17 +29,20 @@ function MonthView({
   anchorMonth,
   range,
   rows,
+  controlEntries,
   selectedDay,
   onDayClick,
 }: {
   anchorMonth: Date
   range: DateRange
   rows: AppointmentListRow[]
+  controlEntries: CalendarControlEntry[]
   selectedDay: Date
-  onDayClick: (day: Date, hasAppointments: boolean) => void
+  onDayClick: (day: Date, hasContent: boolean) => void
 }) {
   const days = enumerateDays(range)
   const byDay = groupAppointmentsByDay(rows)
+  const controlsByDay = groupControlEntriesByDay(controlEntries)
 
   return (
     <div className="overflow-x-auto">
@@ -57,10 +61,12 @@ function MonthView({
           {days.map((day) => {
             const key = dayKey(day)
             const dayAppointments = byDay.get(key) ?? []
+            const dayControls = controlsByDay.get(key) ?? []
             const visible = dayAppointments.slice(0, MAX_VISIBLE_PER_DAY)
             const overflow = dayAppointments.slice(MAX_VISIBLE_PER_DAY)
             const outsideMonth = !isSameMonth(day, anchorMonth)
             const hasAppointments = dayAppointments.length > 0
+            const hasContent = hasAppointments || dayControls.length > 0
             const selected = isSameDay(day, selectedDay)
 
             return (
@@ -74,18 +80,18 @@ function MonthView({
                 key={key}
                 role="button"
                 tabIndex={0}
-                onClick={() => onDayClick(day, hasAppointments)}
+                onClick={() => onDayClick(day, hasContent)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault()
-                    onDayClick(day, hasAppointments)
+                    onDayClick(day, hasContent)
                   }
                 }}
                 className={cn(
                   "outline-none flex min-h-28 cursor-pointer flex-col gap-1 border-b border-r p-1.5 text-left transition-colors [&:nth-child(7n)]:border-r-0",
                   "hover:bg-muted/40 focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:-outline-offset-2",
                   outsideMonth && "bg-muted/20",
-                  hasAppointments && !outsideMonth && "bg-primary/5",
+                  hasContent && !outsideMonth && "bg-primary/5",
                   selected && "ring-primary ring-2 ring-inset",
                 )}
               >
@@ -109,6 +115,9 @@ function MonthView({
                   {overflow.length > 0 && (
                     <DayAppointmentsPopover date={day} appointments={overflow} />
                   )}
+                  {dayControls.map((entry) => (
+                    <ControlChip key={`control-${entry.sourceAppointmentId}`} entry={entry} />
+                  ))}
                 </div>
               </div>
             )

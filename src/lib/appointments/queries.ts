@@ -383,6 +383,72 @@ export async function getAppointmentsForPatient(
   return (data ?? []).map((row) => mapAppointmentListRow(row))
 }
 
+/**
+ * A control/follow-up ("Kontrol Günü") derived from an appointment's
+ * `control_date` — Sprint 31 (founder bug report 2026-09-11: "kontrol tarihini
+ * girdiğimde randevu takviminde o tarihte otomatik görünmeli"). Deliberately
+ * NOT a real `appointments` row (founder decision, same date): no fake time,
+ * no conflict-check pollution, no sync burden if the source changes — it's a
+ * pure read-time projection of an existing appointment onto its control day,
+ * rendered as a distinct "Kontrol" marker that links back to the source.
+ */
+export type CalendarControlEntry = {
+  /** The appointment this control belongs to — the marker links here. */
+  sourceAppointmentId: string
+  patientId: string
+  patientName: string
+  /** Treatment name (plan item or standalone), shown as the marker's subtitle; `null` when the source appointment has no treatment attached. */
+  procedureName: string | null
+  /** `yyyy-mm-dd` — the day this marker lands on. */
+  controlDate: string
+}
+
+type RawControlEntryRow = {
+  id: string
+  patient_id: string
+  control_date: string | null
+  standalone_treatment_name: string | null
+  patient: { full_name: string } | null
+  treatment_plan_item: { treatment_name: string } | null
+}
+
+/**
+ * Control markers whose `control_date` falls in `[from, to)` (both `yyyy-mm-dd`,
+ * `to` exclusive — same convention as `getAppointmentsForCalendarRange`).
+ * Cancelled and soft-deleted appointments are excluded: a cancelled visit's
+ * follow-up is moot. One flat query for the whole visible range, no per-day
+ * fetch (same no-N+1 discipline as the calendar's appointment query).
+ */
+export async function getControlEntriesForCalendarRange(
+  from: string,
+  to: string,
+): Promise<CalendarControlEntry[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("appointments")
+    .select(
+      "id, patient_id, control_date, standalone_treatment_name, patient:patients!appointments_patient_id_fkey(full_name), treatment_plan_item:treatment_plan_items!appointments_treatment_plan_item_id_fkey(treatment_name)",
+    )
+    .is("deleted_at", null)
+    .neq("status", "cancelled")
+    .not("control_date", "is", null)
+    .gte("control_date", from)
+    .lt("control_date", to)
+    .order("control_date", { ascending: true })
+
+  if (error) throw error
+
+  return ((data ?? []) as RawControlEntryRow[])
+    .filter((row): row is RawControlEntryRow & { control_date: string } => row.control_date !== null)
+    .map((row) => ({
+      sourceAppointmentId: row.id,
+      patientId: row.patient_id,
+      patientName: row.patient?.full_name ?? "",
+      procedureName: row.treatment_plan_item?.treatment_name ?? row.standalone_treatment_name ?? null,
+      controlDate: row.control_date,
+    }))
+}
+
 export type AppointmentConflict = {
   id: string
   patientName: string

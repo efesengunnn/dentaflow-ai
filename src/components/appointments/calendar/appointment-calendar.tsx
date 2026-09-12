@@ -12,12 +12,20 @@ import { NewAppointmentSheet } from "@/components/appointments/new-appointment-s
 import { PageSection } from "@/components/shared/page-section"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import type { AppointmentListRow } from "@/lib/appointments/queries"
+import type { AppointmentListRow, CalendarControlEntry } from "@/lib/appointments/queries"
 import { localDateToDateString } from "@/lib/format/date"
 import type { PatientOption } from "@/lib/patients/queries"
 import type { AssignableStaff } from "@/lib/staff/queries"
 import { CalendarQuickNav } from "./calendar-quick-nav"
-import { buildCalendarHref, dayKey, groupAppointmentsByDay, type CalendarMode, type DateRange } from "./calendar-utils"
+import { ControlChip } from "./control-chip"
+import {
+  buildCalendarHref,
+  dayKey,
+  groupAppointmentsByDay,
+  groupControlEntriesByDay,
+  type CalendarMode,
+  type DateRange,
+} from "./calendar-utils"
 import { MonthView } from "./month-view"
 import { WeekView } from "./week-view"
 
@@ -36,6 +44,7 @@ function AppointmentCalendar({
   anchor,
   range,
   rows,
+  controlEntries,
   selectedDay,
   patientOptions,
   staffOptions,
@@ -45,6 +54,7 @@ function AppointmentCalendar({
   anchor: Date
   range: DateRange
   rows: AppointmentListRow[]
+  controlEntries: CalendarControlEntry[]
   selectedDay: Date
   patientOptions: PatientOption[]
   staffOptions: AssignableStaff[]
@@ -62,9 +72,11 @@ function AppointmentCalendar({
 
   const byDay = groupAppointmentsByDay(rows)
   const selectedDayAppointments = byDay.get(dayKey(selectedDay)) ?? []
+  const controlsByDay = groupControlEntriesByDay(controlEntries)
+  const selectedDayControls = controlsByDay.get(dayKey(selectedDay)) ?? []
 
-  function handleDayClick(day: Date, hasAppointments: boolean) {
-    if (hasAppointments) {
+  function handleDayClick(day: Date, hasContent: boolean) {
+    if (hasContent) {
       router.push(buildCalendarHref(mode, anchor, day))
     } else {
       setNewAppointmentDate(day)
@@ -115,16 +127,33 @@ function AppointmentCalendar({
               anchorMonth={anchor}
               range={range}
               rows={rows}
+              controlEntries={controlEntries}
               selectedDay={selectedDay}
               onDayClick={handleDayClick}
             />
           ) : (
-            <WeekView range={range} rows={rows} selectedDay={selectedDay} onDayClick={handleDayClick} />
+            <WeekView
+              range={range}
+              rows={rows}
+              controlEntries={controlEntries}
+              selectedDay={selectedDay}
+              onDayClick={handleDayClick}
+            />
           )}
         </Card>
       </div>
 
       <PageSection title={format(selectedDay, "d MMMM yyyy, EEEE", { locale: tr })}>
+        {selectedDayControls.length > 0 && (
+          <div className="mb-4 flex flex-col gap-2">
+            <p className="text-sm font-medium text-muted-foreground">Kontroller</p>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {selectedDayControls.map((entry) => (
+                <ControlChip key={`control-${entry.sourceAppointmentId}`} entry={entry} />
+              ))}
+            </div>
+          </div>
+        )}
         <AppointmentAgendaList
           appointments={selectedDayAppointments}
           emptyTitle="Bu gün için randevu bulunmuyor."

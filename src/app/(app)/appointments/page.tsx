@@ -15,7 +15,11 @@ import { TodaysAppointmentsCard } from "@/components/dashboard/todays-appointmen
 import { PageContainer } from "@/components/shared/page-container"
 import { PageHeader } from "@/components/shared/page-header"
 import { Button } from "@/components/ui/button"
-import { getAppointments, getAppointmentsForCalendarRange } from "@/lib/appointments/queries"
+import {
+  getAppointments,
+  getAppointmentsForCalendarRange,
+  getControlEntriesForCalendarRange,
+} from "@/lib/appointments/queries"
 import type { AppointmentStatus } from "@/lib/appointments/constants"
 import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
 import { getTodaysAppointments, type DashboardAppointmentRow } from "@/lib/dashboard/queries"
@@ -121,8 +125,9 @@ async function CalendarViewSection({
   const anchor = parseAnchor(anchorParam)
   const range = mode === "month" ? getMonthGridRange(anchor) : getWeekRange(anchor)
   const selectedDay = resolveSelectedDay(dayParam, range)
-  const [rows, patientOptions, staffMember] = await Promise.all([
+  const [rows, controlEntries, patientOptions, staffMember] = await Promise.all([
     getAppointmentsForCalendarRange(localDateToDateString(range.start), localDateToDateString(range.end)),
+    getControlEntriesForCalendarRange(localDateToDateString(range.start), localDateToDateString(range.end)),
     getPatientOptions(),
     getCurrentStaffMember(),
   ])
@@ -135,6 +140,7 @@ async function CalendarViewSection({
       anchor={anchor}
       range={range}
       rows={rows}
+      controlEntries={controlEntries}
       selectedDay={selectedDay}
       patientOptions={patientOptions}
       staffOptions={staffOptions}
