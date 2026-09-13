@@ -20,7 +20,6 @@ import {
 import { deletePatientDocument, recordPatientDocument } from "@/lib/documents/actions"
 import type { PatientDocument } from "@/lib/documents/queries"
 import { createClient } from "@/lib/supabase/client"
-import { cn } from "@/lib/utils"
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -189,26 +188,24 @@ function PatientDocumentsSection({
       )}
 
       <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="w-[95vw] sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle className="truncate pr-6">{viewing?.fileName}</DialogTitle>
           </DialogHeader>
-          <div className={cn("px-4 pb-4")}>
-            {viewing?.url ? (
-              isImage(viewing.mimeType) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={viewing.url}
-                  alt={viewing.fileName}
-                  className="mx-auto max-h-[75vh] w-auto rounded-lg object-contain"
-                />
-              ) : (
-                <iframe src={viewing.url} title={viewing.fileName} className="h-[75vh] w-full rounded-lg border-0" />
-              )
+          {viewing?.url ? (
+            isImage(viewing.mimeType) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={viewing.url}
+                alt={viewing.fileName}
+                className="mx-auto max-h-[82vh] w-auto rounded-lg object-contain"
+              />
             ) : (
-              <p className="text-muted-foreground py-8 text-center text-sm">Belge görüntülenemiyor.</p>
-            )}
-          </div>
+              <iframe src={viewing.url} title={viewing.fileName} className="h-[82vh] w-full rounded-lg border-0" />
+            )
+          ) : (
+            <p className="text-muted-foreground py-8 text-center text-sm">Belge görüntülenemiyor.</p>
+          )}
         </DialogContent>
       </Dialog>
     </div>
