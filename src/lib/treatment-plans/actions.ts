@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
 import type { Database } from "@/lib/supabase/database.types"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { TREATMENT_PAYMENT_ENTRY_TYPE_LABELS } from "@/lib/treatment-plans/constants"
 import {
@@ -17,7 +18,12 @@ import {
   canRecordPayment,
   canReviseTreatmentPlan,
 } from "@/lib/treatment-plans/permissions"
-import { getRemainingSessionsForPatient, type RemainingSessionItem } from "@/lib/treatment-plans/queries"
+import {
+  getRemainingSessionsForPatient,
+  getTreatmentPlanDetail,
+  type RemainingSessionItem,
+  type TreatmentPlanDetail,
+} from "@/lib/treatment-plans/queries"
 import {
   completeSessionFormSchema,
   correctSessionFormSchema,
@@ -81,6 +87,18 @@ function revalidatePatientPaths(patientId: string) {
  */
 function actorFrom(staffMember: { userId: string; role: Parameters<typeof canCreateTreatmentPlan>[0]["role"] }) {
   return { staffId: staffMember.userId, role: staffMember.role, hasFinancialAccess: false }
+}
+
+/**
+ * Client-callable wrapper around `getTreatmentPlanDetail` — the Dashboard's
+ * "Bekleyen Bakiye" / "Bu Ay Toplam Ciro" drill-downs open a plan's full
+ * detail/correction Sheet on demand from a table row (Sprint 32), the
+ * new-model analogue of `fetchTreatmentSeriesDetail`. RLS scopes the read to
+ * the caller's own clinic; the drill-down itself is only reachable by a
+ * `financial_access` holder.
+ */
+export async function fetchTreatmentPlanDetail(planId: string): Promise<TreatmentPlanDetail | null> {
+  return getTreatmentPlanDetail(planId)
 }
 
 /**
@@ -839,4 +857,161 @@ export async function recordTreatmentPlanPaymentCorrection(
 
   revalidatePatientPaths(plan.patient_id)
   return { success: true, paymentId: correction.id }
+}
+
+/**
+ * Hard-delete a single payment ledger row — the Dashboard "Bu Ay Toplam Ciro"
+ * drill-down's "Sil" action (founder decision 2026-09-13). Deliberately a
+ * physical delete, not a correction entry or a soft delete: the founder chose
+ * this over the audit-preserving alternatives after being shown the tradeoff
+ * (see `20260913090000_allow_treatment_payment_delete.sql`). Owner/secretary
+ * only — the same gate as a correction, enforced here AND by the new DELETE
+ * RLS policy (RLS stays the real boundary). Works for both legacy
+ * series-attached and new plan-attached rows, since they share one table.
+ */
+export async function deleteTreatmentPayment(paymentId: string): Promise<DeleteTreatmentActionState> {
+  const staffMember = await getCurrentStaffMember()
+  if (!staffMember) return { error: "Oturum bulunamadı." }
+
+  if (!canCorrectPayment(actorFrom(staffMember))) {
+    return { error: "Bu işlem için yetkiniz yok." }
+  }
+
+  const supabase = await createClient()
+
+  // Resolve the affected patient before deleting — the row is gone afterward,
+  // and both the patient card and the Dashboard need to reflect the removal.
+  const { data: payment } = await supabase
+    .from("treatment_payments")
+    .select("treatment_plan_id, series_id")
+    .eq("id", paymentId)
+    .maybeSingle()
+
+  const { data: deleted, error } = await supabase
+    .from("treatment_payments")
+    .delete()
+    .eq("id", paymentId)
+    .select("id")
+
+  if (error) return { error: "Ödeme silinemedi." }
+  // RLS (clinic + owner/secretary) can silently match zero rows rather than
+  // error — treat that as "not found or not allowed" instead of a false success.
+  if (!deleted || deleted.length === 0) return { error: "Ödeme bulunamadı veya silme yetkiniz yok." }
+
+  let patientId: string | null = null
+  if (payment?.treatment_plan_id) {
+    const { data: plan } = await supabase
+      .from("treatment_plans")
+      .select("patient_id")
+      .eq("id", payment.treatment_plan_id)
+      .maybeSingle()
+    patientId = plan?.patient_id ?? null
+  } else if (payment?.series_id) {
+    const { data: seriesRow } = await supabase
+      .from("treatment_series")
+      .select("patient_id")
+      .eq("id", payment.series_id)
+      .maybeSingle()
+    patientId = seriesRow?.patient_id ?? null
+  }
+
+  if (patientId) revalidatePatientPaths(patientId)
+  revalidatePath("/dashboard")
+  return { success: true }
+}
+
+/**
+ * Permanently (hard) delete a whole treatment plan and everything under it —
+ * items, sessions (including completed ones), payments, and activities — from
+ * the Dashboard "Bekleyen Bakiye" drill-down (founder decision 2026-09-13).
+ * Deliberately NOT the soft `deleteTreatmentPlan` (which keeps the row behind
+ * `deleted_at`): the founder chose an irreversible wipe over the recoverable
+ * one after being shown that this also destroys completed clinical sessions.
+ *
+ * The FKs across the module are all `on delete no action`, so children must be
+ * removed in dependency order; there is no `on delete cascade` to lean on, and
+ * cascading would wrongly take appointments with it. Appointments are instead
+ * DETACHED (their plan/item refs nulled) so the schedule survives the wipe.
+ *
+ * Runs through the service-role client on purpose: none of these clinical
+ * tables grant DELETE to `authenticated` (they are soft-delete-only by
+ * design), and adding permanent DELETE RLS policies to all of them would
+ * broaden the destructive surface far more than confining this one wipe to a
+ * single owner/secretary-gated, clinic-scoped server action does. Ownership +
+ * clinic are verified with the RLS-scoped client first; the admin client only
+ * performs the already-authorized deletes.
+ */
+export async function deleteTreatmentPlanPermanently(planId: string): Promise<DeleteTreatmentActionState> {
+  const staffMember = await getCurrentStaffMember()
+  if (!staffMember) return { error: "Oturum bulunamadı." }
+  if (!canCorrectPayment(actorFrom(staffMember))) {
+    return { error: "Bu işlem için yetkiniz yok." }
+  }
+
+  // Ownership + clinic scope check via the RLS-scoped client — the admin
+  // client below bypasses RLS, so this is the real authorization gate.
+  const supabase = await createClient()
+  const { data: plan, error: planError } = await supabase
+    .from("treatment_plans")
+    .select("id, patient_id, clinic_id")
+    .eq("id", planId)
+    .maybeSingle()
+  if (planError || !plan) return { error: "Tedavi planı bulunamadı." }
+  if (plan.clinic_id !== staffMember.clinicId) return { error: "Bu işlem için yetkiniz yok." }
+
+  const admin = createAdminClient()
+
+  const { data: itemRows } = await admin.from("treatment_plan_items").select("id").eq("treatment_plan_id", planId)
+  const itemIds = (itemRows ?? []).map((row) => row.id)
+
+  let sessionIds: string[] = []
+  if (itemIds.length > 0) {
+    const { data: sessionRows } = await admin
+      .from("treatment_sessions")
+      .select("id")
+      .in("treatment_plan_item_id", itemIds)
+    sessionIds = (sessionRows ?? []).map((row) => row.id)
+  }
+
+  // 1. Activities pointing at the plan, any of its items, or any of its sessions.
+  const activityOr = [`treatment_plan_id.eq.${planId}`]
+  if (itemIds.length > 0) activityOr.push(`treatment_plan_item_id.in.(${itemIds.join(",")})`)
+  if (sessionIds.length > 0) activityOr.push(`treatment_session_id.in.(${sessionIds.join(",")})`)
+  const { error: activityErr } = await admin.from("treatment_activities").delete().or(activityOr.join(","))
+  if (activityErr) return { error: "Plan silinemedi (aktiviteler)." }
+
+  // 2. Detach appointments — keep the schedule, drop the link to the wiped plan.
+  const { error: apptPlanErr } = await admin
+    .from("appointments")
+    .update({ treatment_plan_id: null, treatment_plan_item_id: null })
+    .eq("treatment_plan_id", planId)
+  if (apptPlanErr) return { error: "Plan silinemedi (randevular)." }
+  if (itemIds.length > 0) {
+    await admin.from("appointments").update({ treatment_plan_item_id: null }).in("treatment_plan_item_id", itemIds)
+  }
+
+  // 3. Sessions — clear the self-referential replaced_by pointer first so the
+  //    batch delete can't trip its own FK, then delete.
+  if (sessionIds.length > 0) {
+    await admin.from("treatment_sessions").update({ replaced_by_session_id: null }).in("id", sessionIds)
+    const { error: sessionErr } = await admin.from("treatment_sessions").delete().in("id", sessionIds)
+    if (sessionErr) return { error: "Plan silinemedi (seanslar)." }
+  }
+
+  // 4. Payments — clear related_payment_id (correction → payment self-ref) first.
+  await admin.from("treatment_payments").update({ related_payment_id: null }).eq("treatment_plan_id", planId)
+  const { error: paymentErr } = await admin.from("treatment_payments").delete().eq("treatment_plan_id", planId)
+  if (paymentErr) return { error: "Plan silinemedi (ödemeler)." }
+
+  // 5. Items, then 6. the plan itself.
+  if (itemIds.length > 0) {
+    const { error: itemErr } = await admin.from("treatment_plan_items").delete().eq("treatment_plan_id", planId)
+    if (itemErr) return { error: "Plan silinemedi (kalemler)." }
+  }
+  const { error: deletePlanErr } = await admin.from("treatment_plans").delete().eq("id", planId)
+  if (deletePlanErr) return { error: "Plan silinemedi." }
+
+  revalidatePatientPaths(plan.patient_id)
+  revalidatePath("/dashboard")
+  return { success: true }
 }

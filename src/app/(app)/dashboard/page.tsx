@@ -20,6 +20,7 @@ import {
 } from "@/lib/dashboard/queries"
 import { currentStaffHasPermission } from "@/lib/permissions/queries"
 import { getAssignableStaff } from "@/lib/staff/queries"
+import type { TreatmentPlanActor } from "@/lib/treatment-plans/permissions"
 // Sprint 28D — the Dashboard's own "AI Uyarıları" card now reads from the
 // new Treatment Plan model, same as the chat panel's `getFollowUpCandidates`
 // tool (see `lib/ai/tools.ts`).
@@ -66,7 +67,19 @@ export default async function DashboardPage() {
   // payment stays owner/secretary-only, while voiding a package follows the
   // RLS role set that can already edit one (everyone but secretary).
   const canCorrectPayments = staffMember?.role === "owner" || staffMember?.role === "secretary"
+  // Founder decision 2026-09-13 — hard-deleting a Ciro payment row is the same
+  // authority as correcting one (owner/secretary); mirrors the DELETE RLS
+  // policy added on treatment_payments.
+  const canDeletePayments = staffMember?.role === "owner" || staffMember?.role === "secretary"
   const canManageTreatments = staffMember?.role !== "secretary"
+
+  // Sprint 32 — the new-model drill-down opens the Tedavi Planı detail Sheet,
+  // which gates its own correct/pay/delete affordances by this actor (same
+  // object the patient card builds). Only ever used on the financial-access
+  // branch below, where `staffMember` is guaranteed non-null.
+  const actor: TreatmentPlanActor | null = staffMember
+    ? { staffId: staffMember.userId, role: staffMember.role, hasFinancialAccess }
+    : null
 
   const [financialOverview, ownStats, staffOptions] = await Promise.all([
     hasFinancialAccess ? getFinancialOverview() : Promise.resolve(null),
@@ -182,7 +195,7 @@ export default async function DashboardPage() {
           which, using data already fetched (`outstandingBalanceDetail`
           already carries `patientId`, cross-referenced against
           `todaysAppointments` — no new query). */}
-      {financialOverview ? (
+      {financialOverview && actor ? (
         <FinancialSummaryCards
           monthlyRevenue={financialOverview.monthlyRevenue}
           outstandingBalance={financialOverview.outstandingBalance}
@@ -191,7 +204,9 @@ export default async function DashboardPage() {
           staffOptions={staffOptions}
           canManagePayments={canManagePayments}
           canCorrectPayments={canCorrectPayments}
+          canDeletePayments={canDeletePayments}
           canManageTreatments={canManageTreatments}
+          actor={actor}
           outstandingBalanceHint={
             todaysOutstandingPatientCount > 0
               ? `Tüm zamanlar toplamı — bugün randevulu ${todaysOutstandingPatientCount} hastayı kapsar`

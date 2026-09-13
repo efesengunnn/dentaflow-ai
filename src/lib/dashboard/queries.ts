@@ -15,7 +15,6 @@ import {
 
 const RECENT_LIMIT = 5
 const ACTIVITY_FEED_LIMIT = 8
-const FINANCIAL_STAFF_REVENUE_LIMIT = 5
 
 /**
  * Exported: also used by `lib/ai/queries.ts` (Sprint 27) for the same "this
@@ -224,16 +223,21 @@ export async function getUpcomingAppointments(): Promise<DashboardAppointmentRow
 // a third of the round trips.
 // ---------------------------------------------------------------------------
 
-export type StaffRevenueRow = {
-  staffId: string
-  staffName: string
-  amount: number
-}
+/**
+ * One currency's slice of a headline aggregate (Sprint 32). TRY and EUR are
+ * never summed together — a plan may mix currencies, and the legacy series
+ * model is TRY-only, so both cards show one figure per currency.
+ */
+export type CurrencyAmount = { currency: string; amount: number }
 
 export type MonthlyRevenueDetailRow = {
   id: string
-  /** Founder decision 2026-07-28 — needed to open a correction from this row directly, no navigation to the treatment's own card. */
-  seriesId: string
+  /** Which model this payment belongs to — drives which correction Sheet the drill-down opens (Sprint 32). */
+  source: "series" | "plan"
+  /** Set only when source === "series" — opens the legacy correction Sheet. */
+  seriesId: string | null
+  /** Set only when source === "plan" — opens the Tedavi Planı detail Sheet. */
+  treatmentPlanId: string | null
   method: TreatmentPaymentMethod
   patientId: string
   patientName: string
@@ -241,31 +245,59 @@ export type MonthlyRevenueDetailRow = {
   staffId: string | null
   staffName: string | null
   amount: number
+  /** Sprint 32 — the amount is in this currency; legacy series rows are always TRY. */
+  currency: string
   entryType: TreatmentPaymentEntryType
   paidAt: string
 }
 
 export type OutstandingBalanceDetailRow = {
-  seriesId: string
+  source: "series" | "plan"
+  seriesId: string | null
+  treatmentPlanId: string | null
   patientId: string
   patientName: string
   treatmentType: string
   totalFee: number | null
   paidAmount: number
   remainingBalance: number
+  /** Sprint 32 — a plan can owe in more than one currency, each its own row. */
+  currency: string
   lastPaymentDate: string | null
   staffId: string | null
   staffName: string | null
 }
 
 export type FinancialOverview = {
-  monthlyRevenue: number
-  outstandingBalance: number
-  staffRevenue: StaffRevenueRow[]
-  /** All-time, unbounded — feeds the "Bu Ay Toplam Ciro" drill-down, which defaults its own date filter to this month but can widen. */
+  /** Per currency — TRY + EUR are never summed together (Sprint 31/32). */
+  monthlyRevenue: CurrencyAmount[]
+  /** Per currency, same reasoning. */
+  outstandingBalance: CurrencyAmount[]
+  /** All-time, unbounded, both models — feeds the "Bu Ay Toplam Ciro" drill-down, which defaults its own date filter to this month but can widen. */
   revenueDetail: MonthlyRevenueDetailRow[]
-  /** Only series with a real (>0) remaining balance — feeds the "Bekleyen Bakiye" drill-down. */
+  /** Only series/plan-currencies with a real (>0) remaining balance — feeds the "Bekleyen Bakiye" drill-down. */
   outstandingBalanceDetail: OutstandingBalanceDetailRow[]
+}
+
+/** TRY first, then the rest alphabetically — deterministic display order, matches the ledger's convention. */
+function sortByCurrency<T extends { currency: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) =>
+    a.currency === "TRY" ? -1 : b.currency === "TRY" ? 1 : a.currency.localeCompare(b.currency),
+  )
+}
+
+/** Per-currency total from a set of priced items — `null` for a currency only when no item in it has a price set yet ("Belirlenmedi"), mirroring the new model's `deriveTotalAmount`. */
+function totalByCurrency(items: { currency: string; totalPrice: number | null }[]): Map<string, number | null> {
+  const totals = new Map<string, number | null>()
+  for (const item of items) {
+    const current = totals.get(item.currency)
+    if (item.totalPrice === null) {
+      if (current === undefined) totals.set(item.currency, null)
+    } else {
+      totals.set(item.currency, (current ?? 0) + item.totalPrice)
+    }
+  }
+  return totals
 }
 
 /**
@@ -276,32 +308,24 @@ export type FinancialOverview = {
  * aggregates — `current_staff_has_permission('financial_access')` stays the
  * single decision point everywhere, never a parallel role check. A
  * successful call also IS "opening the financial-aggregate view," so it
- * logs one `financial_dashboard_view` row to `audit_logs`
- * (docs/DATABASE.md#audit_logs) — fire-and-forget, a logging failure must
- * never block the Dashboard from rendering.
+ * logs one `financial_dashboard_view` row to `audit_logs`.
  *
- * Personnel revenue attribution joins through `treatments.staff_id`, never
- * `treatment_payments.recorded_by` (front-desk staff who took the payment
- * vs. the staff who generated the revenue are different questions — see the
- * `treatment_payments` table comment in
- * `20260724090000_create_treatment_module.sql`). A package series can span
- * multiple staff across its sessions; each series' revenue is credited to
- * whichever staff member performed the most sessions in it — the common
- * case is one treating staff per series throughout, and this avoids
- * fractional-revenue splitting for the rare multi-staff series.
+ * Sprint 32 — now spans BOTH treatment models: the legacy `treatment_series`
+ * (TRY-only, being retired) AND the new `treatment_plans` (which the pilot
+ * clinic actually uses today, and which can mix TRY + EUR items). Payments
+ * live in one shared `treatment_payments` table, tagged either `series_id`
+ * (legacy) or `treatment_plan_id` (new); before this sprint the Dashboard
+ * read only the `series_id` slice, so every real payment silently showed as
+ * ₺0 on the panel (founder report 2026-09-13). Every headline figure is now
+ * per currency — TRY and EUR are never summed together (Sprint 31 rule).
  *
- * `outstandingBalance` (the headline figure) stays a simple clinic-wide net
- * — `sum(total_fee) - sum(all-time paid)` — deliberately not a sum of only
- * the positive per-series balances in `outstandingBalanceDetail`; an
- * overpaid series nets against an underpaid one in the headline number,
- * same math as Sprint 7/8.5's `getFinancialSummary`, preserved as-is here.
- * The payments fetch is intentionally unbounded (no date floor, no row
- * limit): capping it would silently under-count `paidAmount` for any series
- * with payment history older than the cutoff, corrupting a real financial
- * total — not an acceptable tradeoff for a performance shortcut. Bounded
- * instead by what it actually is: a single pilot clinic's lifetime ledger,
- * realistically hundreds of rows at MVP scale, not the kind of table that
- * needs pagination yet.
+ * Personnel revenue attribution: legacy joins through `treatments.staff_id`
+ * (whichever staff performed the most sessions in the series); the new model
+ * credits each plan to the provider owning the most items on it. Neither
+ * uses `treatment_payments.recorded_by` (who took the payment ≠ who earned
+ * the revenue). Payments are fetched unbounded (no date floor) — capping
+ * would under-count all-time `paidAmount` and corrupt the balance; a single
+ * pilot clinic's lifetime ledger is small enough that this is fine.
  */
 export async function getFinancialOverview(): Promise<FinancialOverview | null> {
   const hasAccess = await currentStaffHasPermission("financial_access")
@@ -315,17 +339,22 @@ export async function getFinancialOverview(): Promise<FinancialOverview | null> 
 
   const [
     { data: seriesRows, error: seriesError },
+    { data: planRows, error: planError },
     { error: auditError },
   ] = await Promise.all([
     supabase
       .from("treatment_series")
       .select("id, treatment_type, total_fee, patient:patients!treatment_series_patient_id_fkey(id, full_name)")
       .neq("status", "voided"),
+    supabase
+      .from("treatment_plans")
+      .select("id, plan_name, patient:patients!treatment_plans_patient_id_fkey(id, full_name)")
+      .neq("status", "voided")
+      .is("deleted_at", null),
     // Awaited alongside the reads (not fire-and-forget): an un-awaited
     // insert can be dropped once the Server Component's render promise
-    // resolves and the request lifecycle tears down, so it must be part of
-    // what this function actually waits on. A logging failure still must
-    // never block the Dashboard from rendering, so its error is swallowed.
+    // resolves and the request lifecycle tears down. A logging failure still
+    // must never block the Dashboard from rendering, so its error is swallowed.
     supabase.from("audit_logs").insert({
       clinic_id: staffMember.clinicId,
       staff_id: staffMember.userId,
@@ -334,32 +363,65 @@ export async function getFinancialOverview(): Promise<FinancialOverview | null> 
   ])
 
   if (seriesError) throw seriesError
+  if (planError) throw planError
   if (auditError) console.error("financial_dashboard_view audit log insert failed:", auditError)
-  if (!seriesRows || seriesRows.length === 0) {
-    return { monthlyRevenue: 0, outstandingBalance: 0, staffRevenue: [], revenueDetail: [], outstandingBalanceDetail: [] }
-  }
 
-  const seriesIds = seriesRows.map((row) => row.id)
-  const seriesById = new Map(seriesRows.map((row) => [row.id, row]))
+  const series = seriesRows ?? []
+  const plans = planRows ?? []
+  const seriesIds = series.map((row) => row.id)
+  const planIds = plans.map((row) => row.id)
+  const seriesById = new Map(series.map((row) => [row.id, row]))
+  const planById = new Map(plans.map((row) => [row.id, row]))
 
-  const [{ data: treatmentRows, error: treatmentError }, { data: paymentRows, error: paymentError }] =
-    await Promise.all([
-      supabase
-        .from("treatments")
-        .select("series_id, staff_id, staff:staff_members!treatments_staff_id_fkey(full_name)")
-        .in("series_id", seriesIds)
-        .neq("status", "voided"),
-      supabase
-        .from("treatment_payments")
-        .select("id, series_id, amount, entry_type, method, paid_at")
-        .in("series_id", seriesIds)
-        .order("paid_at", { ascending: false }),
-    ])
+  const emptyResult: { data: never[]; error: null } = { data: [], error: null }
+  const [
+    { data: treatmentRows, error: treatmentError },
+    { data: planItemRows, error: planItemError },
+    { data: seriesPaymentRows, error: seriesPaymentError },
+    { data: planPaymentRows, error: planPaymentError },
+  ] = await Promise.all([
+    seriesIds.length > 0
+      ? supabase
+          .from("treatments")
+          .select("series_id, staff_id, staff:staff_members!treatments_staff_id_fkey(full_name)")
+          .in("series_id", seriesIds)
+          .neq("status", "voided")
+      : Promise.resolve(emptyResult),
+    planIds.length > 0
+      ? supabase
+          .from("treatment_plan_items")
+          .select(
+            "treatment_plan_id, provider_id, total_price, currency, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name)",
+          )
+          .in("treatment_plan_id", planIds)
+          .neq("status", "voided")
+          .is("deleted_at", null)
+      : Promise.resolve(emptyResult),
+    seriesIds.length > 0
+      ? supabase
+          .from("treatment_payments")
+          .select("id, series_id, amount, entry_type, method, currency, paid_at")
+          .in("series_id", seriesIds)
+          .order("paid_at", { ascending: false })
+      : Promise.resolve(emptyResult),
+    planIds.length > 0
+      ? supabase
+          .from("treatment_payments")
+          .select("id, treatment_plan_id, amount, entry_type, method, currency, paid_at")
+          .in("treatment_plan_id", planIds)
+          .order("paid_at", { ascending: false })
+      : Promise.resolve(emptyResult),
+  ])
 
   if (treatmentError) throw treatmentError
-  if (paymentError) throw paymentError
+  if (planItemError) throw planItemError
+  if (seriesPaymentError) throw seriesPaymentError
+  if (planPaymentError) throw planPaymentError
 
-  const payments = paymentRows ?? []
+  const seriesPayments = seriesPaymentRows ?? []
+  const planPayments = planPaymentRows ?? []
+  const planItems = planItemRows ?? []
+
   const primaryStaffBySeriesId = resolvePrimaryStaffBySeries(
     (treatmentRows ?? []).map((row) => ({
       seriesId: row.series_id,
@@ -368,98 +430,200 @@ export async function getFinancialOverview(): Promise<FinancialOverview | null> 
     })),
   )
 
-  // --- Headline aggregates -------------------------------------------------
-  // A series with no fee yet ("Ücret Belirlenmedi", Sprint 8) contributes 0
-  // here — its real fee isn't known yet, so it can't be counted as expected
-  // revenue until someone sets it; it'll be included automatically once they do.
-  const totalFee = seriesRows.reduce((sum, row) => sum + (row.total_fee ?? 0), 0)
-  const allTimePaid = sumPaymentLedger(payments.map((row) => ({ amount: row.amount, entryType: row.entry_type })))
-  const monthlyPayments = payments.filter((row) => row.paid_at >= monthStart)
-  const monthlyRevenue = sumPaymentLedger(
-    monthlyPayments.map((row) => ({ amount: row.amount, entryType: row.entry_type })),
+  // Plan-side attribution — credit each plan to the provider owning the most
+  // items on it (ties resolve to the first seen), the new-model analogue of
+  // `resolvePrimaryStaffBySeries`. Also index items per plan for currency totals.
+  const planItemsByPlanId = new Map<string, typeof planItems>()
+  for (const item of planItems) {
+    const list = planItemsByPlanId.get(item.treatment_plan_id) ?? []
+    list.push(item)
+    planItemsByPlanId.set(item.treatment_plan_id, list)
+  }
+  const primaryProviderByPlanId = new Map<string, { providerId: string; providerName: string }>()
+  for (const [planId, items] of planItemsByPlanId) {
+    const counts = new Map<string, { name: string; count: number }>()
+    for (const item of items) {
+      const entry = counts.get(item.provider_id) ?? { name: item.provider?.full_name ?? "", count: 0 }
+      entry.count += 1
+      counts.set(item.provider_id, entry)
+    }
+    let best: { providerId: string; providerName: string } | null = null
+    let bestCount = -1
+    for (const [providerId, entry] of counts) {
+      if (entry.count > bestCount) {
+        bestCount = entry.count
+        best = { providerId, providerName: entry.name }
+      }
+    }
+    if (best) primaryProviderByPlanId.set(planId, best)
+  }
+
+  // --- Headline: monthly revenue per currency ------------------------------
+  const monthlyByCurrency = new Map<string, number>()
+  for (const row of [...seriesPayments, ...planPayments]) {
+    if (row.paid_at < monthStart) continue
+    const currency = row.currency ?? "TRY"
+    monthlyByCurrency.set(currency, (monthlyByCurrency.get(currency) ?? 0) + paymentLedgerSign(row.entry_type) * row.amount)
+  }
+  const monthlyRevenue = sortByCurrency(
+    Array.from(monthlyByCurrency.entries())
+      .map(([currency, amount]) => ({ currency, amount }))
+      .filter((row) => row.amount !== 0),
   )
 
-  const staffAmounts = new Map<string, StaffRevenueRow>()
-  for (const row of monthlyPayments) {
-    // `series_id` is guaranteed non-null here (queried via `.in("series_id", seriesIds)`
-    // above) — the column itself became nullable in Sprint 28 to also allow
-    // `treatment_plan_id`-attached rows, which this legacy series-only query never fetches.
-    const primaryStaff = primaryStaffBySeriesId.get(row.series_id!)
-    if (!primaryStaff) continue
-    const existing = staffAmounts.get(primaryStaff.staffId) ?? {
-      staffId: primaryStaff.staffId,
-      staffName: primaryStaff.staffName,
-      amount: 0,
-    }
-    existing.amount += paymentLedgerSign(row.entry_type) * row.amount
-    staffAmounts.set(primaryStaff.staffId, existing)
-  }
-  const staffRevenue = Array.from(staffAmounts.values())
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, FINANCIAL_STAFF_REVENUE_LIMIT)
+  // --- Headline: outstanding balance per currency --------------------------
+  // Clinic-wide net per currency: sum(total) - sum(all-time paid). An
+  // overpaid record nets against an underpaid one within the same currency
+  // (same convention as the pre-Sprint-32 headline), never across currencies.
+  // A record with no fee yet ("Belirlenmedi") contributes 0 to its total.
+  const balanceTotalByCurrency = new Map<string, number>()
+  const balancePaidByCurrency = new Map<string, number>()
+  const addBalanceTotal = (currency: string, amount: number) =>
+    balanceTotalByCurrency.set(currency, (balanceTotalByCurrency.get(currency) ?? 0) + amount)
+  const addBalancePaid = (currency: string, sign: number, amount: number) =>
+    balancePaidByCurrency.set(currency, (balancePaidByCurrency.get(currency) ?? 0) + sign * amount)
 
-  // --- Revenue drill-down rows (Sprint 8.5, all-time) -----------------------
-  const revenueDetail: MonthlyRevenueDetailRow[] = payments.map((row) => {
-    const series = seriesById.get(row.series_id!)
-    const primaryStaff = primaryStaffBySeriesId.get(row.series_id!)
-    return {
-      id: row.id,
-      seriesId: row.series_id!,
-      method: row.method,
-      patientId: series?.patient?.id ?? "",
-      patientName: series?.patient?.full_name ?? "",
-      treatmentType: series?.treatment_type ?? "",
-      staffId: primaryStaff?.staffId ?? null,
-      staffName: primaryStaff?.staffName ?? null,
-      amount: row.amount,
-      entryType: row.entry_type,
-      paidAt: row.paid_at,
-    }
-  })
+  addBalanceTotal("TRY", series.reduce((sum, row) => sum + (row.total_fee ?? 0), 0))
+  for (const row of seriesPayments) addBalancePaid(row.currency ?? "TRY", paymentLedgerSign(row.entry_type), row.amount)
+  for (const item of planItems) if (item.total_price !== null) addBalanceTotal(item.currency ?? "TRY", item.total_price)
+  for (const row of planPayments) addBalancePaid(row.currency ?? "TRY", paymentLedgerSign(row.entry_type), row.amount)
 
-  // --- Outstanding balance drill-down rows (Sprint 8.5) ---------------------
-  const paymentsBySeriesId = new Map<
-    string,
-    { amount: number; entryType: TreatmentPaymentEntryType; paidAt: string }[]
-  >()
-  for (const row of payments) {
-    const list = paymentsBySeriesId.get(row.series_id!) ?? []
-    list.push({ amount: row.amount, entryType: row.entry_type, paidAt: row.paid_at })
-    paymentsBySeriesId.set(row.series_id!, list)
-  }
+  const outstandingBalance = sortByCurrency(
+    Array.from(new Set([...balanceTotalByCurrency.keys(), ...balancePaidByCurrency.keys()]))
+      .map((currency) => ({
+        currency,
+        amount: (balanceTotalByCurrency.get(currency) ?? 0) - (balancePaidByCurrency.get(currency) ?? 0),
+      }))
+      .filter((row) => row.amount !== 0),
+  )
 
+  // --- Revenue drill-down rows (all-time, both models) ---------------------
+  const revenueDetail: MonthlyRevenueDetailRow[] = [
+    ...seriesPayments.map((row): MonthlyRevenueDetailRow => {
+      const s = seriesById.get(row.series_id!)
+      const staff = primaryStaffBySeriesId.get(row.series_id!)
+      return {
+        id: row.id,
+        source: "series",
+        seriesId: row.series_id!,
+        treatmentPlanId: null,
+        method: row.method,
+        patientId: s?.patient?.id ?? "",
+        patientName: s?.patient?.full_name ?? "",
+        treatmentType: s?.treatment_type ?? "",
+        staffId: staff?.staffId ?? null,
+        staffName: staff?.staffName ?? null,
+        amount: row.amount,
+        currency: row.currency ?? "TRY",
+        entryType: row.entry_type,
+        paidAt: row.paid_at,
+      }
+    }),
+    ...planPayments.map((row): MonthlyRevenueDetailRow => {
+      const p = planById.get(row.treatment_plan_id!)
+      const provider = primaryProviderByPlanId.get(row.treatment_plan_id!)
+      return {
+        id: row.id,
+        source: "plan",
+        seriesId: null,
+        treatmentPlanId: row.treatment_plan_id!,
+        method: row.method,
+        patientId: p?.patient?.id ?? "",
+        patientName: p?.patient?.full_name ?? "",
+        treatmentType: p?.plan_name ?? "",
+        staffId: provider?.providerId ?? null,
+        staffName: provider?.providerName ?? null,
+        amount: row.amount,
+        currency: row.currency ?? "TRY",
+        entryType: row.entry_type,
+        paidAt: row.paid_at,
+      }
+    }),
+  ]
+
+  // --- Outstanding balance drill-down rows ---------------------------------
   const outstandingBalanceDetail: OutstandingBalanceDetailRow[] = []
-  for (const row of seriesRows) {
-    const seriesPayments = paymentsBySeriesId.get(row.id) ?? []
-    const paidAmount = sumPaymentLedger(seriesPayments)
+
+  // Legacy: one row per series (TRY) with a real remaining balance.
+  const seriesPaymentsBySeriesId = new Map<string, { amount: number; entryType: TreatmentPaymentEntryType; paidAt: string }[]>()
+  for (const row of seriesPayments) {
+    const list = seriesPaymentsBySeriesId.get(row.series_id!) ?? []
+    list.push({ amount: row.amount, entryType: row.entry_type, paidAt: row.paid_at })
+    seriesPaymentsBySeriesId.set(row.series_id!, list)
+  }
+  for (const row of series) {
+    const pays = seriesPaymentsBySeriesId.get(row.id) ?? []
+    const paidAmount = sumPaymentLedger(pays)
     const remainingBalance = deriveRemainingBalance(row.total_fee, paidAmount)
     if (remainingBalance === null || remainingBalance <= 0) continue
-
-    const lastPaymentDate = seriesPayments.reduce<string | null>(
+    const lastPaymentDate = pays.reduce<string | null>(
       (latest, payment) => (!latest || payment.paidAt > latest ? payment.paidAt : latest),
       null,
     )
-    const primaryStaff = primaryStaffBySeriesId.get(row.id)
-
+    const staff = primaryStaffBySeriesId.get(row.id)
     outstandingBalanceDetail.push({
+      source: "series",
       seriesId: row.id,
+      treatmentPlanId: null,
       patientId: row.patient?.id ?? "",
       patientName: row.patient?.full_name ?? "",
       treatmentType: row.treatment_type,
       totalFee: row.total_fee,
       paidAmount,
       remainingBalance,
+      currency: "TRY",
       lastPaymentDate,
-      staffId: primaryStaff?.staffId ?? null,
-      staffName: primaryStaff?.staffName ?? null,
+      staffId: staff?.staffId ?? null,
+      staffName: staff?.staffName ?? null,
     })
   }
+
+  // New model: one row per (plan, currency) with a real remaining balance.
+  const planPaymentsByPlanId = new Map<string, typeof planPayments>()
+  for (const row of planPayments) {
+    const list = planPaymentsByPlanId.get(row.treatment_plan_id!) ?? []
+    list.push(row)
+    planPaymentsByPlanId.set(row.treatment_plan_id!, list)
+  }
+  for (const plan of plans) {
+    const items = planItemsByPlanId.get(plan.id) ?? []
+    const pays = planPaymentsByPlanId.get(plan.id) ?? []
+    const totals = totalByCurrency(items.map((item) => ({ currency: item.currency ?? "TRY", totalPrice: item.total_price })))
+    const provider = primaryProviderByPlanId.get(plan.id)
+    const currencies = new Set<string>([...totals.keys(), ...pays.map((row) => row.currency ?? "TRY")])
+    for (const currency of currencies) {
+      const total = totals.get(currency) ?? null
+      const currencyPays = pays.filter((row) => (row.currency ?? "TRY") === currency)
+      const paidAmount = sumPaymentLedger(currencyPays.map((row) => ({ amount: row.amount, entryType: row.entry_type })))
+      const remainingBalance = deriveRemainingBalance(total, paidAmount)
+      if (remainingBalance === null || remainingBalance <= 0) continue
+      const lastPaymentDate = currencyPays.reduce<string | null>(
+        (latest, payment) => (!latest || payment.paid_at > latest ? payment.paid_at : latest),
+        null,
+      )
+      outstandingBalanceDetail.push({
+        source: "plan",
+        seriesId: null,
+        treatmentPlanId: plan.id,
+        patientId: plan.patient?.id ?? "",
+        patientName: plan.patient?.full_name ?? "",
+        treatmentType: plan.plan_name,
+        totalFee: total,
+        paidAmount,
+        remainingBalance,
+        currency,
+        lastPaymentDate,
+        staffId: provider?.providerId ?? null,
+        staffName: provider?.providerName ?? null,
+      })
+    }
+  }
+
   outstandingBalanceDetail.sort((a, b) => b.remainingBalance - a.remainingBalance)
 
   return {
     monthlyRevenue,
-    outstandingBalance: totalFee - allTimePaid,
-    staffRevenue,
+    outstandingBalance,
     revenueDetail,
     outstandingBalanceDetail,
   }

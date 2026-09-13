@@ -74,7 +74,13 @@ export async function buildAIContextSnapshot(identity: AIRequestIdentity): Promi
     newPatientsThisMonth,
     noShowsThisMonth,
     financialSummary: financialOverview
-      ? { monthlyRevenueTRY: financialOverview.monthlyRevenue, outstandingBalanceTRY: financialOverview.outstandingBalance }
+      ? {
+          // Sprint 32 — the overview is per currency now (TRY + EUR possible);
+          // this snapshot keeps its TRY-only shape, taking the TRY slice.
+          monthlyRevenueTRY: financialOverview.monthlyRevenue.find((row) => row.currency === "TRY")?.amount ?? 0,
+          outstandingBalanceTRY:
+            financialOverview.outstandingBalance.find((row) => row.currency === "TRY")?.amount ?? 0,
+        }
       : null,
   }
 }

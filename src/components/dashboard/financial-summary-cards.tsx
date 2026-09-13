@@ -3,7 +3,7 @@
 import type { ColumnDef } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
-import { Ban, ChevronRight, Landmark, Undo2, Wallet } from "lucide-react"
+import { Ban, ChevronRight, Landmark, Trash2, Undo2, Wallet } from "lucide-react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
 import { useCallback, useMemo, useState } from "react"
@@ -15,23 +15,32 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format/currency"
-import type { MonthlyRevenueDetailRow, OutstandingBalanceDetailRow } from "@/lib/dashboard/queries"
+import type { CurrencyAmount, MonthlyRevenueDetailRow, OutstandingBalanceDetailRow } from "@/lib/dashboard/queries"
 import type { AssignableStaff } from "@/lib/staff/queries"
 import { fetchTreatmentSeriesDetail, voidTreatmentSeries } from "@/lib/treatments/actions"
 import { TREATMENT_PAYMENT_ENTRY_TYPE_LABELS, type TreatmentPaymentEntryType } from "@/lib/treatments/constants"
 import type { TreatmentPaymentRow, TreatmentSeriesDetail } from "@/lib/treatments/queries"
+import {
+  deleteTreatmentPayment,
+  deleteTreatmentPlanPermanently,
+  fetchTreatmentPlanDetail,
+} from "@/lib/treatment-plans/actions"
+import type { TreatmentPlanActor } from "@/lib/treatment-plans/permissions"
+import type { TreatmentPlanDetail, TreatmentPlanPaymentRow } from "@/lib/treatment-plans/queries"
 import { DashboardDrilldownSheet } from "./dashboard-drilldown-sheet"
 import { FinancialDetailFilters } from "./financial-detail-filters"
 
 /**
  * Performance (2026-07-29 founder report: pages feel sluggish again) — these
- * two Sheets pull in the entire Treatment module's form/schema tree (session
+ * Sheets pull in the entire Treatment module's form/schema tree (session
  * forms, edit-series form, add-payment form, correction form). Statically
  * importing them here would add all of that weight to the Dashboard's initial
  * JS for every visit, even though they only render after an explicit
- * "Ödemeyi Düzelt" / "Geçersiz Say" click. Code-split so that weight loads on
- * demand instead — same "don't pay for what you didn't ask for" principle as
- * this module's own `fetchCatalogForStaff` on-demand fetch pattern.
+ * "Ödemeyi Düzelt" / "Geçersiz Say" / "Detay" click. Code-split so that
+ * weight loads on demand instead — same "don't pay for what you didn't ask
+ * for" principle as this module's own `fetchCatalog*` on-demand fetches.
+ * Sprint 32 adds the new-model (Tedavi Planı) equivalents alongside the
+ * legacy series ones.
  */
 const PaymentCorrectionSheet = dynamic(
   () => import("@/components/treatments/payment-correction-sheet").then((mod) => mod.PaymentCorrectionSheet),
@@ -40,6 +49,17 @@ const PaymentCorrectionSheet = dynamic(
 const TreatmentSeriesDetailSheet = dynamic(
   () =>
     import("@/components/treatments/treatment-series-detail-sheet").then((mod) => mod.TreatmentSeriesDetailSheet),
+  { ssr: false },
+)
+const TreatmentPlanPaymentCorrectionSheet = dynamic(
+  () =>
+    import("@/components/treatment-plans/treatment-plan-payment-correction-sheet").then(
+      (mod) => mod.TreatmentPlanPaymentCorrectionSheet,
+    ),
+  { ssr: false },
+)
+const TreatmentPlanDetailSheet = dynamic(
+  () => import("@/components/treatment-plans/treatment-plan-detail-sheet").then((mod) => mod.TreatmentPlanDetailSheet),
   { ssr: false },
 )
 
@@ -74,6 +94,45 @@ function startOfThisMonth(): Date {
   return new Date(now.getFullYear(), now.getMonth(), 1)
 }
 
+/** TRY first, then the rest alphabetically — matches the server aggregate's order. */
+function sortByCurrency(rows: CurrencyAmount[]): CurrencyAmount[] {
+  return [...rows].sort((a, b) =>
+    a.currency === "TRY" ? -1 : b.currency === "TRY" ? 1 : a.currency.localeCompare(b.currency),
+  )
+}
+
+/** Net revenue per currency (ledger sign applied) from the currently visible rows. */
+function revenueTotalsByCurrency(rows: MonthlyRevenueDetailRow[]): CurrencyAmount[] {
+  const totals = new Map<string, number>()
+  for (const row of rows) {
+    totals.set(row.currency, (totals.get(row.currency) ?? 0) + ledgerSign(row.entryType) * row.amount)
+  }
+  return sortByCurrency(
+    Array.from(totals.entries())
+      .map(([currency, amount]) => ({ currency, amount }))
+      .filter((row) => row.amount !== 0),
+  )
+}
+
+/** Remaining balance per currency from the currently visible rows. */
+function balanceTotalsByCurrency(rows: OutstandingBalanceDetailRow[]): CurrencyAmount[] {
+  const totals = new Map<string, number>()
+  for (const row of rows) {
+    totals.set(row.currency, (totals.get(row.currency) ?? 0) + row.remainingBalance)
+  }
+  return sortByCurrency(
+    Array.from(totals.entries())
+      .map(([currency, amount]) => ({ currency, amount }))
+      .filter((row) => row.amount !== 0),
+  )
+}
+
+/** "12.000,00 ₺ + 600,00 €", or "0,00 ₺" when there's nothing — currencies never summed together. */
+function joinCurrencyAmounts(rows: CurrencyAmount[]): string {
+  if (rows.length === 0) return formatCurrency(0, "TRY")
+  return rows.map((row) => formatCurrency(row.amount, row.currency)).join(" + ")
+}
+
 const AGING_BALANCE_THRESHOLD_DAYS = 30
 
 /** A real, explainable "risk" signal (Sprint 25 audit): no payment in 30+ days on a still-open balance. */
@@ -83,14 +142,17 @@ function isAgingBalance(lastPaymentDate: string): boolean {
 }
 
 /**
- * Founder decision 2026-07-28 — "Bu Ay Toplam Ciro"'daki her satır zaten tek
- * bir `treatment_payments` kaydı, o yüzden düzeltme burada doğrudan mevcut
- * `PaymentCorrectionSheet`'i (patient card'ın kullandığı aynı bileşen) o
- * satırın kendi verisiyle açıyor — yeni bir form yazılmadı.
+ * Founder decision 2026-07-28 — each "Bu Ay Toplam Ciro" row is one
+ * `treatment_payments` record, so correction opens the same Sheet the patient
+ * card uses, seeded with that row's own data. Sprint 32 — the row now carries
+ * a `source` ("series" | "plan") that picks the legacy or new-model Sheet, and
+ * its own `currency` (was hardcoded TRY).
  */
 function buildRevenueColumns(opts: {
   canCorrectPayments: boolean
+  canDeletePayments: boolean
   onCorrected: () => void
+  onDeleted: () => void
 }): ColumnDef<MonthlyRevenueDetailRow, unknown>[] {
   const columns: ColumnDef<MonthlyRevenueDetailRow, unknown>[] = [
     {
@@ -113,7 +175,7 @@ function buildRevenueColumns(opts: {
       header: "Tutar",
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
-          <span className="tabular-nums">{formatCurrency(row.original.amount)}</span>
+          <span className="tabular-nums">{formatCurrency(row.original.amount, row.original.currency)}</span>
           {row.original.entryType !== "payment" && (
             <Badge variant="warning">{TREATMENT_PAYMENT_ENTRY_TYPE_LABELS[row.original.entryType]}</Badge>
           )}
@@ -127,28 +189,79 @@ function buildRevenueColumns(opts: {
     },
   ]
 
-  if (opts.canCorrectPayments) {
+  if (opts.canCorrectPayments || opts.canDeletePayments) {
     columns.push({
       id: "actions",
       header: "",
       cell: ({ row }) => {
-        if (row.original.entryType !== "payment") return null
-        const payment: TreatmentPaymentRow = {
-          id: row.original.id,
-          seriesId: row.original.seriesId,
-          relatedPaymentId: null,
-          amount: row.original.amount,
-          entryType: row.original.entryType,
-          method: row.original.method,
-          currency: "TRY",
-          paidAt: row.original.paidAt,
-          recordedByName: null,
-          note: null,
-          createdAt: row.original.paidAt,
-        }
+        // Correction ("İade / Düzelt") only makes sense on an actual payment,
+        // never on an existing refund/adjustment row. Deletion (founder
+        // decision 2026-09-13) applies to any ledger row — it removes that
+        // exact record outright, source and entry type notwithstanding.
+        const canCorrectThisRow = opts.canCorrectPayments && row.original.entryType === "payment"
+
         return (
-          <div onClick={(event) => event.stopPropagation()}>
-            <PaymentCorrectionSheet seriesId={row.original.seriesId} payment={payment} onSuccess={opts.onCorrected} />
+          <div className="flex items-center justify-end gap-0.5" onClick={(event) => event.stopPropagation()}>
+            {canCorrectThisRow &&
+              (row.original.source === "series" ? (
+                <PaymentCorrectionSheet
+                  seriesId={row.original.seriesId ?? ""}
+                  payment={
+                    {
+                      id: row.original.id,
+                      seriesId: row.original.seriesId ?? "",
+                      relatedPaymentId: null,
+                      amount: row.original.amount,
+                      entryType: row.original.entryType,
+                      method: row.original.method,
+                      currency: row.original.currency,
+                      paidAt: row.original.paidAt,
+                      recordedByName: null,
+                      note: null,
+                      createdAt: row.original.paidAt,
+                    } satisfies TreatmentPaymentRow
+                  }
+                  onSuccess={opts.onCorrected}
+                />
+              ) : (
+                <TreatmentPlanPaymentCorrectionSheet
+                  treatmentPlanId={row.original.treatmentPlanId ?? ""}
+                  payment={
+                    {
+                      id: row.original.id,
+                      treatmentPlanId: row.original.treatmentPlanId ?? "",
+                      relatedPaymentId: null,
+                      amount: row.original.amount,
+                      entryType: row.original.entryType,
+                      method: row.original.method,
+                      currency: row.original.currency,
+                      paidAt: row.original.paidAt,
+                      recordedByName: null,
+                      note: null,
+                      createdAt: row.original.paidAt,
+                    } satisfies TreatmentPlanPaymentRow
+                  }
+                  onSuccess={opts.onCorrected}
+                />
+              ))}
+
+            {opts.canDeletePayments && (
+              <EntityDeleteDialog
+                title="Ödeme silinsin mi?"
+                description={`${formatCurrency(row.original.amount, row.original.currency)} tutarındaki bu ödeme kaydı kalıcı olarak silinecek. Bu işlem geri alınamaz ve ciro toplamından düşer.`}
+                triggerLabel=""
+                triggerIcon={Trash2}
+                triggerVariant="ghost"
+                triggerSize="icon-sm"
+                confirmVariant="destructive"
+                confirmLabel="Sil"
+                onConfirm={async () => {
+                  const result = await deleteTreatmentPayment(row.original.id)
+                  if (result?.success) opts.onDeleted()
+                  return result
+                }}
+              />
+            )}
           </div>
         )
       },
@@ -160,9 +273,12 @@ function buildRevenueColumns(opts: {
 
 function buildOutstandingBalanceColumns(opts: {
   canCorrectPayments: boolean
+  canDeletePayments: boolean
   canManageTreatments: boolean
   onCorrectSeries: (seriesId: string) => void
+  onOpenPlan: (planId: string) => void
   onVoided: () => void
+  onPlanDeleted: () => void
 }): ColumnDef<OutstandingBalanceDetailRow, unknown>[] {
   const columns: ColumnDef<OutstandingBalanceDetailRow, unknown>[] = [
     {
@@ -177,24 +293,28 @@ function buildOutstandingBalanceColumns(opts: {
     },
     {
       accessorKey: "totalFee",
-      header: "Toplam Paket Ücreti",
+      header: "Toplam Ücret",
       cell: ({ row }) =>
         row.original.totalFee === null ? (
           <span className="text-muted-foreground">Belirlenmedi</span>
         ) : (
-          <span className="tabular-nums">{formatCurrency(row.original.totalFee)}</span>
+          <span className="tabular-nums">{formatCurrency(row.original.totalFee, row.original.currency)}</span>
         ),
     },
     {
       accessorKey: "paidAmount",
       header: "Ödenen",
-      cell: ({ row }) => <span className="tabular-nums">{formatCurrency(row.original.paidAmount)}</span>,
+      cell: ({ row }) => (
+        <span className="tabular-nums">{formatCurrency(row.original.paidAmount, row.original.currency)}</span>
+      ),
     },
     {
       accessorKey: "remainingBalance",
       header: "Kalan",
       cell: ({ row }) => (
-        <span className="font-medium tabular-nums">{formatCurrency(row.original.remainingBalance)}</span>
+        <span className="font-medium tabular-nums">
+          {formatCurrency(row.original.remainingBalance, row.original.currency)}
+        </span>
       ),
     },
     {
@@ -229,40 +349,78 @@ function buildOutstandingBalanceColumns(opts: {
     },
   ]
 
-  if (opts.canCorrectPayments || opts.canManageTreatments) {
+  if (opts.canCorrectPayments || opts.canManageTreatments || opts.canDeletePayments) {
     columns.push({
       id: "actions",
       header: "",
-      cell: ({ row }) => (
-        <div className="flex items-center justify-end gap-1" onClick={(event) => event.stopPropagation()}>
-          {opts.canCorrectPayments && (
-            <Button size="sm" variant="ghost" onClick={() => opts.onCorrectSeries(row.original.seriesId)}>
-              <Undo2 />
-              Ödemeyi Düzelt
-            </Button>
-          )}
-          {opts.canManageTreatments && (
-            <EntityDeleteDialog
-              title="Paket geçersiz sayılsın mı?"
-              description={
-                row.original.paidAmount > 0
-                  ? `"${row.original.treatmentType}" paketi geçersiz sayılacak. Bu pakette ${formatCurrency(row.original.paidAmount)} ödeme kaydı var — bu tutar da ciro raporlarından çıkacak. Geçmiş korunur, kayıt kalıcı silinmez.`
-                  : `"${row.original.treatmentType}" paketi geçersiz sayılacak. Geçmiş korunur, kayıt kalıcı silinmez.`
-              }
-              onConfirm={async () => {
-                const result = await voidTreatmentSeries(row.original.seriesId)
-                if (result?.success) opts.onVoided()
-                return result
-              }}
-              triggerLabel="Geçersiz Say"
-              triggerIcon={Ban}
-              triggerVariant="outline"
-              confirmLabel="Geçersiz Say"
-              confirmingLabel="İşleniyor..."
-            />
-          )}
-        </div>
-      ),
+      cell: ({ row }) => {
+        // New-model rows open the full Tedavi Planı detail Sheet (payment
+        // correction + soft delete, gated by `actor` inside). Since Sprint 32
+        // they also get a direct hard-delete "Sil" (founder decision
+        // 2026-09-13) that permanently wipes the whole plan.
+        if (row.original.source === "plan") {
+          if (!opts.canCorrectPayments && !opts.canManageTreatments && !opts.canDeletePayments) return null
+          return (
+            <div className="flex items-center justify-end gap-0.5" onClick={(event) => event.stopPropagation()}>
+              {(opts.canCorrectPayments || opts.canManageTreatments) && (
+                <Button size="sm" variant="ghost" onClick={() => opts.onOpenPlan(row.original.treatmentPlanId ?? "")}>
+                  <Undo2 />
+                  Detay / Düzelt
+                </Button>
+              )}
+              {opts.canDeletePayments && (
+                <EntityDeleteDialog
+                  title="Tedavi planı kalıcı olarak silinsin mi?"
+                  description={`"${row.original.treatmentType}" planı ve altındaki tüm kalemler, tamamlanmış seanslar ve ödemeler kalıcı olarak silinecek. Bu işlem geri alınamaz. Randevular silinmez, yalnızca bu planla bağlantıları kaldırılır.`}
+                  triggerLabel=""
+                  triggerIcon={Trash2}
+                  triggerVariant="ghost"
+                  triggerSize="icon-sm"
+                  confirmVariant="destructive"
+                  confirmLabel="Kalıcı Sil"
+                  confirmingLabel="Siliniyor..."
+                  onConfirm={async () => {
+                    const result = await deleteTreatmentPlanPermanently(row.original.treatmentPlanId ?? "")
+                    if (result?.success) opts.onPlanDeleted()
+                    return result
+                  }}
+                />
+              )}
+            </div>
+          )
+        }
+
+        return (
+          <div className="flex items-center justify-end gap-1" onClick={(event) => event.stopPropagation()}>
+            {opts.canCorrectPayments && (
+              <Button size="sm" variant="ghost" onClick={() => opts.onCorrectSeries(row.original.seriesId ?? "")}>
+                <Undo2 />
+                Ödemeyi Düzelt
+              </Button>
+            )}
+            {opts.canManageTreatments && (
+              <EntityDeleteDialog
+                title="Paket geçersiz sayılsın mı?"
+                description={
+                  row.original.paidAmount > 0
+                    ? `"${row.original.treatmentType}" paketi geçersiz sayılacak. Bu pakette ${formatCurrency(row.original.paidAmount, row.original.currency)} ödeme kaydı var — bu tutar da ciro raporlarından çıkacak. Geçmiş korunur, kayıt kalıcı silinmez.`
+                    : `"${row.original.treatmentType}" paketi geçersiz sayılacak. Geçmiş korunur, kayıt kalıcı silinmez.`
+                }
+                onConfirm={async () => {
+                  const result = await voidTreatmentSeries(row.original.seriesId ?? "")
+                  if (result?.success) opts.onVoided()
+                  return result
+                }}
+                triggerLabel="Geçersiz Say"
+                triggerIcon={Ban}
+                triggerVariant="outline"
+                confirmLabel="Geçersiz Say"
+                confirmingLabel="İşleniyor..."
+              />
+            )}
+          </div>
+        )
+      },
     })
   }
 
@@ -270,36 +428,26 @@ function buildOutstandingBalanceColumns(opts: {
 }
 
 /**
- * Sprint 23 — replaces two separate `StatCard`s with one split strip (a
- * single `Card`, divided in half). Two adjacent white boxes read as two
- * unrelated facts; a finance app's balance summary (Stripe's "Balance"
- * header is the reference point, not the literal design) puts related
- * money figures in one shared surface so they read as one connected
- * "here's where the money stands" statement instead of competing KPI tiles.
- */
-/**
  * Project Evolution V2 — dropped the tinted icon-square (the audit's most-
  * cited "generic admin panel" tell) in favor of a small, heavy, tracked-out
  * label doing the categorization work the icon badge used to do.
  *
- * The figure itself tried the display-serif/`font-light` treatment and the
- * founder reverted it on sight ("beğenmedim") — back to Geist Sans
- * `font-semibold`, same as every other pre-Evolution-V2 hero number. Money
- * figures specifically stay in the UI voice, not the display serif; the
- * serif remains scoped to the Dashboard greeting, Patient Detail's name,
- * and Kalan Bakiye only (see `docs/DESIGN_SYSTEM.md`'s Project Evolution V2
- * section) — do not re-apply it here without being asked again.
+ * Sprint 32 — the figure is per currency now (a plan can mix TRY + EUR),
+ * rendered as one line per currency; currencies are never summed together.
+ * Money figures stay in the UI voice (Geist Sans `font-semibold`), not the
+ * display serif — see `docs/DESIGN_SYSTEM.md`'s Project Evolution V2 section;
+ * do not re-apply the serif here without being asked again.
  */
 function FinancialFigure({
   label,
-  value,
+  values,
   hint,
   tone,
   onClick,
   breakdown,
 }: {
   label: string
-  value: string
+  values: CurrencyAmount[]
   hint?: string
   icon: typeof Landmark
   tone: "success" | "warning"
@@ -307,6 +455,7 @@ function FinancialFigure({
   /** Founder decision 2026-07-28 — "ne kadarını kim yapmış" geri getirildi (Sprint 23'te kaldırılmıştı), bu kez ayrı bir kart değil, ana rakamın altında küçük fontla — aynı veriden (`revenueDetail`), yeni sorgu yok. */
   breakdown?: { label: string; value: string }[]
 }) {
+  const lines = values.length === 0 ? [{ currency: "TRY", amount: 0 }] : values
   return (
     <button
       type="button"
@@ -324,7 +473,13 @@ function FinancialFigure({
         </p>
         <ChevronRight className="text-muted-foreground size-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
       </div>
-      <p className="text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
+      <div className="flex flex-col">
+        {lines.map((line) => (
+          <p key={line.currency} className="text-3xl font-semibold tracking-tight tabular-nums">
+            {formatCurrency(line.amount, line.currency)}
+          </p>
+        ))}
+      </div>
       {hint && <p className="text-muted-foreground/70 text-xs">{hint}</p>}
       {breakdown && breakdown.length > 0 && (
         <div className="mt-1.5 flex w-full flex-col gap-0.5">
@@ -341,8 +496,9 @@ function FinancialFigure({
 }
 
 type FinancialSummaryCardsProps = {
-  monthlyRevenue: number
-  outstandingBalance: number
+  /** Sprint 32 — per currency (TRY + EUR possible), never summed together. */
+  monthlyRevenue: CurrencyAmount[]
+  outstandingBalance: CurrencyAmount[]
   revenueDetail: MonthlyRevenueDetailRow[]
   outstandingBalanceDetail: OutstandingBalanceDetailRow[]
   staffOptions: AssignableStaff[]
@@ -350,20 +506,24 @@ type FinancialSummaryCardsProps = {
   outstandingBalanceHint?: string
   /** Founder decision 2026-07-28 — gates "Ödemeyi Düzelt" on both drill-downs; owner/secretary only, same rule as the patient card's correction trigger. */
   canCorrectPayments: boolean
+  /** Founder decision 2026-09-13 — gates the "Sil" (hard delete) action on the Ciro drill-down rows; owner/secretary only, mirrors the DELETE RLS policy on treatment_payments. */
+  canDeletePayments: boolean
   /** Gates "Paketi Geçersiz Say" on the Bekleyen Bakiye drill-down — matches `treatment_series_update_clinical_roles` RLS (owner/doctor/beauty_specialist), not `canCorrectPayments`, since voiding a package is a change to the package itself. */
   canManageTreatments: boolean
-  /** Passed straight through to the on-demand detail Sheet's own "Ödeme Ekle" trigger — same flag every other Treatment Module screen uses (owner/secretary/beauty_specialist). */
+  /** Passed straight through to the on-demand legacy detail Sheet's own "Ödeme Ekle" trigger — same flag every other Treatment Module screen uses (owner/secretary/beauty_specialist). */
   canManagePayments: boolean
+  /** Sprint 32 — new-model drill-down opens the Tedavi Planı detail Sheet, which gates its own correct/pay/delete affordances by this actor (same object the patient card builds). */
+  actor: TreatmentPlanActor
 }
 
 /**
  * "Bu Ay Toplam Ciro"/"Bekleyen Bakiye" — Sprint 8.5 made both cards open a
- * Sheet with the underlying rows; Sprint 9 matures those Sheets with
- * sorting, a staff + date-range filter, and a live total that reflects
- * whatever's currently visible (not just the unfiltered headline number).
+ * Sheet with the underlying rows; Sprint 9 matures those Sheets with sorting,
+ * a staff + date-range filter, and a live total. Sprint 32 spans both
+ * treatment models: each row carries its `source` + `currency`, so the
+ * drill-downs open the right correction Sheet and totals are per currency.
  * Filtering runs entirely client-side over the already-fetched row arrays —
- * no extra round trip per filter change, and the row counts involved are a
- * single pilot clinic's data, small enough that this stays instant.
+ * no extra round trip per filter change.
  */
 function FinancialSummaryCards({
   monthlyRevenue,
@@ -373,18 +533,17 @@ function FinancialSummaryCards({
   staffOptions,
   outstandingBalanceHint,
   canCorrectPayments,
+  canDeletePayments,
   canManageTreatments,
   canManagePayments,
+  actor,
 }: FinancialSummaryCardsProps) {
   const router = useRouter()
   const [revenueOpen, setRevenueOpen] = useState(false)
   const [balanceOpen, setBalanceOpen] = useState(false)
 
-  // "Ödemeyi Düzelt" (Bekleyen Bakiye row) — reuses the patient card's own
-  // detail Sheet on demand rather than a second payment-picker UI. Fetched
-  // fresh each time a series is opened; `onDataChanged` below keeps it in
-  // sync with corrections made while it's open (a plain `router.refresh()`
-  // alone wouldn't touch this client-fetched copy).
+  // "Ödemeyi Düzelt" (legacy Bekleyen Bakiye row) — reuses the patient card's
+  // own detail Sheet on demand rather than a second payment-picker UI.
   const [detailSeriesId, setDetailSeriesId] = useState<string | null>(null)
   const [detailSeries, setDetailSeries] = useState<TreatmentSeriesDetail | null>(null)
 
@@ -400,6 +559,16 @@ function FinancialSummaryCards({
     [loadSeriesDetail],
   )
 
+  // "Detay / Düzelt" (new-model row) — opens the full Tedavi Planı detail
+  // Sheet, fetched on demand, same pattern as the legacy series path above.
+  const [detailPlanId, setDetailPlanId] = useState<string | null>(null)
+  const [detailPlan, setDetailPlan] = useState<TreatmentPlanDetail | null>(null)
+
+  const openPlanDetail = useCallback((planId: string) => {
+    setDetailPlanId(planId)
+    fetchTreatmentPlanDetail(planId).then(setDetailPlan)
+  }, [])
+
   const [revenueStaffId, setRevenueStaffId] = useState("all")
   const [revenueDateFrom, setRevenueDateFrom] = useState<Date | undefined>(() => startOfThisMonth())
   const [revenueDateTo, setRevenueDateTo] = useState<Date | undefined>(() => new Date())
@@ -409,15 +578,18 @@ function FinancialSummaryCards({
   const [balanceDateTo, setBalanceDateTo] = useState<Date | undefined>(undefined)
 
   const revenueByStaff = useMemo(() => {
-    const totals = new Map<string, number>()
+    const totals = new Map<string, { label: string; currency: string; amount: number }>()
     for (const row of revenueDetail) {
       const staffName = row.staffName ?? "—"
-      totals.set(staffName, (totals.get(staffName) ?? 0) + ledgerSign(row.entryType) * row.amount)
+      const key = `${staffName}|${row.currency}`
+      const existing = totals.get(key) ?? { label: staffName, currency: row.currency, amount: 0 }
+      existing.amount += ledgerSign(row.entryType) * row.amount
+      totals.set(key, existing)
     }
-    return Array.from(totals.entries())
-      .filter(([, amount]) => amount > 0)
-      .sort(([, a], [, b]) => b - a)
-      .map(([staffName, amount]) => ({ label: staffName, value: formatCurrency(amount) }))
+    return Array.from(totals.values())
+      .filter((row) => row.amount > 0)
+      .sort((a, b) => b.amount - a.amount)
+      .map((row) => ({ label: row.label, value: formatCurrency(row.amount, row.currency) }))
   }, [revenueDetail])
 
   const filteredRevenueRows = useMemo(
@@ -429,10 +601,7 @@ function FinancialSummaryCards({
       ),
     [revenueDetail, revenueStaffId, revenueDateFrom, revenueDateTo],
   )
-  const filteredRevenueTotal = useMemo(
-    () => filteredRevenueRows.reduce((sum, row) => sum + ledgerSign(row.entryType) * row.amount, 0),
-    [filteredRevenueRows],
-  )
+  const filteredRevenueTotals = useMemo(() => revenueTotalsByCurrency(filteredRevenueRows), [filteredRevenueRows])
 
   const filteredBalanceRows = useMemo(
     () =>
@@ -443,10 +612,7 @@ function FinancialSummaryCards({
       ),
     [outstandingBalanceDetail, balanceStaffId, balanceDateFrom, balanceDateTo],
   )
-  const filteredBalanceTotal = useMemo(
-    () => filteredBalanceRows.reduce((sum, row) => sum + row.remainingBalance, 0),
-    [filteredBalanceRows],
-  )
+  const filteredBalanceTotals = useMemo(() => balanceTotalsByCurrency(filteredBalanceRows), [filteredBalanceRows])
 
   const defaultRevenueFrom = startOfThisMonth()
   const defaultRevenueTo = new Date()
@@ -470,18 +636,27 @@ function FinancialSummaryCards({
   }
 
   const revenueColumns = useMemo(
-    () => buildRevenueColumns({ canCorrectPayments, onCorrected: () => router.refresh() }),
-    [canCorrectPayments, router],
+    () =>
+      buildRevenueColumns({
+        canCorrectPayments,
+        canDeletePayments,
+        onCorrected: () => router.refresh(),
+        onDeleted: () => router.refresh(),
+      }),
+    [canCorrectPayments, canDeletePayments, router],
   )
   const outstandingBalanceColumns = useMemo(
     () =>
       buildOutstandingBalanceColumns({
         canCorrectPayments,
+        canDeletePayments,
         canManageTreatments,
         onCorrectSeries: openSeriesDetail,
+        onOpenPlan: openPlanDetail,
         onVoided: () => router.refresh(),
+        onPlanDeleted: () => router.refresh(),
       }),
-    [canCorrectPayments, canManageTreatments, router, openSeriesDetail],
+    [canCorrectPayments, canDeletePayments, canManageTreatments, router, openSeriesDetail, openPlanDetail],
   )
 
   return (
@@ -489,7 +664,7 @@ function FinancialSummaryCards({
       <Card className="flex flex-col divide-y overflow-hidden py-0 sm:flex-row sm:divide-x sm:divide-y-0">
         <FinancialFigure
           label="Bu Ay Toplam Ciro"
-          value={formatCurrency(monthlyRevenue)}
+          values={monthlyRevenue}
           icon={Landmark}
           tone="success"
           onClick={() => setRevenueOpen(true)}
@@ -497,7 +672,7 @@ function FinancialSummaryCards({
         />
         <FinancialFigure
           label="Bekleyen Bakiye"
-          value={formatCurrency(outstandingBalance)}
+          values={outstandingBalance}
           hint={outstandingBalanceHint}
           icon={Wallet}
           tone="warning"
@@ -509,7 +684,7 @@ function FinancialSummaryCards({
         open={revenueOpen}
         onOpenChange={setRevenueOpen}
         title="Bu Ay Toplam Ciro"
-        description={`Toplam ${formatCurrency(filteredRevenueTotal)} — ${filteredRevenueRows.length} işlem.`}
+        description={`Toplam ${joinCurrencyAmounts(filteredRevenueTotals)} — ${filteredRevenueRows.length} işlem.`}
         enableSorting
         filters={
           <FinancialDetailFilters
@@ -534,7 +709,7 @@ function FinancialSummaryCards({
         open={balanceOpen}
         onOpenChange={setBalanceOpen}
         title="Bekleyen Bakiye"
-        description={`Toplam ${formatCurrency(filteredBalanceTotal)} — kalan bakiyesi olan ${filteredBalanceRows.length} tedavi.`}
+        description={`Toplam ${joinCurrencyAmounts(filteredBalanceTotals)} — kalan bakiyesi olan ${filteredBalanceRows.length} tedavi.`}
         enableSorting
         filters={
           <FinancialDetailFilters
@@ -571,6 +746,22 @@ function FinancialSummaryCards({
             }
           }}
           onDataChanged={() => detailSeriesId && loadSeriesDetail(detailSeriesId)}
+        />
+      )}
+
+      {detailPlan && (
+        <TreatmentPlanDetailSheet
+          plan={detailPlan}
+          isOwner={actor.role === "owner"}
+          providers={staffOptions}
+          actor={actor}
+          open={detailPlanId !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDetailPlanId(null)
+              setDetailPlan(null)
+            }
+          }}
         />
       )}
     </div>
