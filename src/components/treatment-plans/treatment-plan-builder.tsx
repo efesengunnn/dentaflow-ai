@@ -86,7 +86,7 @@ function TreatmentPlanBuilder({
   // single cross-currency sum would be meaningless (Sprint 31).
   const committedTotalsByCurrency = committedItems.reduce<Record<string, number>>((totals, item) => {
     const currency = item.currency ?? "TRY"
-    totals[currency] = (totals[currency] ?? 0) + item.sessionCount * (item.unitPrice ?? 0)
+    totals[currency] = (totals[currency] ?? 0) + (item.unitPrice ?? 0)
     return totals
   }, {})
 

@@ -141,8 +141,7 @@ function TreatmentPlanItemCard({
         <InfoGrid
           compact
           items={[
-            { label: "Birim Fiyat", value: formatMoney(item.unitPrice, item.currency) },
-            { label: "Toplam", value: formatMoney(item.totalPrice, item.currency) },
+            { label: "Fiyat", value: formatMoney(item.totalPrice, item.currency) },
             { label: "Kalan Seans", value: item.remainingSessions },
             ...(isOwner && item.providerShareAmount != null
               ? [{ label: "Sağlayıcı Payı", value: formatMoney(item.providerShareAmount, item.currency) }]

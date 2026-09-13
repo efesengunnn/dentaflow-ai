@@ -108,8 +108,10 @@ export async function fetchTreatmentPlanDetail(planId: string): Promise<Treatmen
  * used here instead: the plan is inserted first, then every item in one
  * batch `insert()` call (atomic among themselves — Postgres either inserts
  * all rows or none), and if that batch fails the plan is voided rather than
- * left as a phantom empty row. `total_price` is computed here
- * (`unitPrice * sessionCount`), never trusted from the client.
+ * left as a phantom empty row. `total_price` equals the treatment's flat
+ * price (`unitPrice`) — session count does NOT multiply it (founder decision
+ * 2026-09-13: a treatment has one price regardless of how many visits it
+ * takes). Computed here, never trusted from the client.
  */
 export async function createTreatmentPlan(values: TreatmentPlanFormValues): Promise<TreatmentPlanActionState> {
   const parsed = treatmentPlanFormSchema.safeParse(values)
@@ -151,7 +153,7 @@ export async function createTreatmentPlan(values: TreatmentPlanFormValues): Prom
     catalog_item_id: item.catalogItemId || null,
     session_count: item.sessionCount,
     unit_price: item.unitPrice ?? null,
-    total_price: item.unitPrice !== undefined ? item.unitPrice * item.sessionCount : null,
+    total_price: item.unitPrice ?? null,
     currency: item.currency,
     control_date: item.controlDate || null,
     created_by: staffMember.userId,
@@ -239,7 +241,8 @@ export async function updateTreatmentPlanItem(
     }
   }
 
-  const totalPrice = parsed.data.unitPrice !== undefined ? parsed.data.unitPrice * parsed.data.sessionCount : null
+  // Flat price — session count does not multiply it (founder decision 2026-09-13).
+  const totalPrice = parsed.data.unitPrice ?? null
   const nextRevisionNo = existing.revision_no + 1
 
   const { data: updated, error: updateError } = await supabase
