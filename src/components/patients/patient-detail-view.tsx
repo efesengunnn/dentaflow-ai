@@ -17,13 +17,13 @@ import { BreadcrumbLabel } from "@/components/layout/breadcrumb-label"
 import { CollapsibleToggleTrigger } from "@/components/shared/collapsible-toggle-trigger"
 import { PageContainer } from "@/components/shared/page-container"
 import { PageSection } from "@/components/shared/page-section"
-import { PlaceholderCard } from "@/components/shared/placeholder-card"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn, getInitials } from "@/lib/utils"
 import type { AIPatientSummary } from "@/lib/ai/queries"
 import type { AppointmentListRow } from "@/lib/appointments/queries"
+import type { PatientDocument } from "@/lib/documents/queries"
 import { formatCurrency } from "@/lib/format/currency"
 import { formatIstanbulDateTime } from "@/lib/format/date"
 import { formatTurkishPhoneDisplay } from "@/lib/format/phone"
@@ -37,6 +37,7 @@ import { AppointmentErrorToast } from "./appointment-error-toast"
 import { PatientActivityTimeline } from "./patient-activity-timeline"
 import { PatientAIInsightsPanel } from "./patient-ai-insights-panel"
 import { PatientDeleteDialog } from "./patient-delete-dialog"
+import { PatientDocumentsSection } from "./patient-documents-section"
 import { PatientEditSheet } from "./patient-edit-sheet"
 import { PatientInfoPanel } from "./patient-info-panel"
 import { PatientPaymentsSection } from "./patient-payments-section"
@@ -114,6 +115,8 @@ function PatientDetailView({
   staffOptions,
   patientOptions,
   canManage,
+  clinicId,
+  documents,
   canManagePayments,
   isOwner,
   treatmentPlanActor,
@@ -127,6 +130,9 @@ function PatientDetailView({
   staffOptions: AssignableStaff[]
   patientOptions: PatientOption[]
   canManage: boolean
+  /** Sprint 33 — current staff's clinic, needed to build the clinic-scoped document Storage path. */
+  clinicId: string
+  documents: PatientDocument[]
   /** Kept for the page's data contract; the header no longer derives totals from the legacy series model. */
   treatmentSeries: TreatmentSeriesDetail[]
   canManagePayments: boolean
@@ -295,6 +301,10 @@ function PatientDetailView({
               <CalendarDays />
               Randevular
             </TabsTrigger>
+            <TabsTrigger value="belgeler">
+              <FileText />
+              Belgeler
+            </TabsTrigger>
             <TabsTrigger value="gecmis">
               <History />
               Geçmiş
@@ -344,6 +354,10 @@ function PatientDetailView({
             />
           </TabsContent>
 
+          <TabsContent value="belgeler">
+            <PatientDocumentsSection patientId={patient.id} clinicId={clinicId} documents={documents} />
+          </TabsContent>
+
           <TabsContent value="gecmis" className="flex flex-col gap-8">
             <PatientActivityTimeline patientId={patient.id} activities={activities} canAddNote={canManage} />
 
@@ -355,13 +369,6 @@ function PatientDetailView({
                 <PatientAIInsightsPanel summary={aiSummary} />
               </CollapsibleContent>
             </Collapsible>
-
-            <PageSection title="Belgeler" icon={FileText}>
-              <PlaceholderCard
-                icon={FileText}
-                text="Belge yönetimi henüz aktif değil — rıza formları ve diğer belgeler burada saklanabilecek."
-              />
-            </PageSection>
           </TabsContent>
         </Tabs>
       </div>

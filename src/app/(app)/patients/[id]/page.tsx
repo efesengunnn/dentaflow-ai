@@ -4,6 +4,7 @@ import { PatientDetailView } from "@/components/patients/patient-detail-view"
 import { getPatientSummaryForAI } from "@/lib/ai/queries"
 import { getAppointmentsForPatient } from "@/lib/appointments/queries"
 import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
+import { getPatientDocuments } from "@/lib/documents/queries"
 import { getPatientActivities, getPatientById, getPatientOptions } from "@/lib/patients/queries"
 import { currentStaffHasPermission } from "@/lib/permissions/queries"
 import { getAssignableStaff } from "@/lib/staff/queries"
@@ -29,6 +30,7 @@ export default async function PatientDetailPage({ params, searchParams }: Patien
     patientOptions,
     treatmentSeries,
     treatmentPlans,
+    documents,
     hasFinancialAccess,
   ] = await Promise.all([
     getPatientById(id),
@@ -39,6 +41,7 @@ export default async function PatientDetailPage({ params, searchParams }: Patien
     getPatientOptions(),
     getTreatmentSeriesForPatientWithDetails(id),
     getPatientTreatmentPlans(id),
+    getPatientDocuments(id),
     currentStaffHasPermission("financial_access"),
   ])
 
@@ -73,6 +76,8 @@ export default async function PatientDetailPage({ params, searchParams }: Patien
       staffOptions={staffOptions}
       patientOptions={patientOptions}
       canManage={canManage}
+      clinicId={staffMember?.clinicId ?? ""}
+      documents={documents}
       treatmentSeries={treatmentSeries}
       canManagePayments={canManagePayments}
       isOwner={isOwner}
