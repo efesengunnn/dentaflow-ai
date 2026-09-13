@@ -54,7 +54,7 @@ function PatientPlanPaymentSheet({ planOptions }: { planOptions: PayablePlan[] }
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
-        <Button size="sm" variant="outline" disabled={planOptions.length === 0}>
+        <Button size="sm" disabled={planOptions.length === 0}>
           <Plus />
           Ödeme Ekle
         </Button>

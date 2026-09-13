@@ -1,21 +1,30 @@
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
-import { CalendarDays, FileText, History, Pencil, Plus, Stethoscope, Wallet } from "lucide-react"
+import {
+  CalendarClock,
+  CalendarDays,
+  FileText,
+  History,
+  Pencil,
+  Plus,
+  Stethoscope,
+  Wallet,
+} from "lucide-react"
 import Link from "next/link"
 
 import { AppointmentAgendaList } from "@/components/appointments/appointment-agenda-list"
 import { BreadcrumbLabel } from "@/components/layout/breadcrumb-label"
 import { CollapsibleToggleTrigger } from "@/components/shared/collapsible-toggle-trigger"
-import { InfoGrid } from "@/components/shared/info-grid"
 import { PageContainer } from "@/components/shared/page-container"
 import { PageSection } from "@/components/shared/page-section"
 import { PlaceholderCard } from "@/components/shared/placeholder-card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn, getInitials } from "@/lib/utils"
 import type { AIPatientSummary } from "@/lib/ai/queries"
 import type { AppointmentListRow } from "@/lib/appointments/queries"
+import { formatCurrency } from "@/lib/format/currency"
 import { formatIstanbulDateTime } from "@/lib/format/date"
 import { formatTurkishPhoneDisplay } from "@/lib/format/phone"
 import type { PatientActivityRow, PatientDetail, PatientOption } from "@/lib/patients/queries"
@@ -33,13 +42,70 @@ import { PatientInfoPanel } from "./patient-info-panel"
 import { PatientPaymentsSection } from "./patient-payments-section"
 import { PatientPlanPaymentSheet } from "./patient-plan-payment-sheet"
 
+/** TRY first, then the rest — matches the ledger's per-currency order elsewhere. */
+function sortCurrencyEntries(entries: { currency: string; amount: number }[]) {
+  return [...entries].sort((a, b) =>
+    a.currency === "TRY" ? -1 : b.currency === "TRY" ? 1 : a.currency.localeCompare(b.currency),
+  )
+}
+
 /**
- * Sprint 21 — Premium Visual Redesign. Right column is a stack of
- * `PageSection`s — same pattern as `LeadDetailView` (Sprint 3). Adding a
- * real Appointments/Treatments/Documents/AI module later means inserting
- * one more `PageSection` here, not redesigning this page — that's the
- * "future modules slot in easily" requirement satisfied by an already-proven
- * layout, not new scaffolding.
+ * One compact headline figure in the KPI strip. Neutral by default; `warning`
+ * tone (amber) is reserved for an outstanding balance, the one number a
+ * clinic acts on. Same label/figure treatment as the dashboard's financial
+ * cards, scaled down for a 3-up strip.
+ */
+function KpiCard({
+  label,
+  value,
+  hint,
+  tone = "default",
+  icon: Icon,
+}: {
+  label: string
+  value: string
+  hint?: string
+  tone?: "default" | "warning"
+  icon: typeof Wallet
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-1 rounded-2xl border p-5",
+        tone === "warning" ? "border-warning/25 bg-warning/5" : "border-border bg-card",
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <Icon className={cn("size-4 shrink-0", tone === "warning" ? "text-warning" : "text-muted-foreground")} />
+        <p
+          className={cn(
+            "text-[11px] font-semibold tracking-[0.08em] uppercase",
+            tone === "warning" ? "text-warning" : "text-muted-foreground",
+          )}
+        >
+          {label}
+        </p>
+      </div>
+      <p className={cn("truncate text-2xl font-semibold tracking-tight tabular-nums", tone === "warning" && "text-warning")}>
+        {value}
+      </p>
+      {hint && <p className="text-muted-foreground/80 truncate text-xs">{hint}</p>}
+    </div>
+  )
+}
+
+/**
+ * Sprint 33 — Patient card UX redesign (founder request: "bölümler karışık").
+ * The page now reads as: quiet identity band → a 3-up KPI strip answering the
+ * three questions a clinic asks first (balance / next visit / last visit) →
+ * a two-column body with a sticky personal-info panel and the operational
+ * content grouped into tabs (Tedavi & Ödeme / Randevular / Geçmiş) instead of
+ * one long six-section scroll.
+ *
+ * Financial figures now come from the NEW treatment_plans model
+ * (`treatmentPlans`, per currency) — consistent with the Ödemeler section —
+ * not the legacy `treatment_series` totals the header used before, which were
+ * empty for plan-only patients (see [[dashboard-financial-is-legacy-only]]).
  */
 function PatientDetailView({
   patient,
@@ -48,7 +114,6 @@ function PatientDetailView({
   staffOptions,
   patientOptions,
   canManage,
-  treatmentSeries,
   canManagePayments,
   isOwner,
   treatmentPlanActor,
@@ -62,6 +127,7 @@ function PatientDetailView({
   staffOptions: AssignableStaff[]
   patientOptions: PatientOption[]
   canManage: boolean
+  /** Kept for the page's data contract; the header no longer derives totals from the legacy series model. */
   treatmentSeries: TreatmentSeriesDetail[]
   canManagePayments: boolean
   /** Tedavi Planı wizard'ının/kart listesinin owner-only `provider_share` gate'i için. */
@@ -73,53 +139,43 @@ function PatientDetailView({
   appointmentError?: string
   aiSummary: AIPatientSummary | null
 }) {
-  // Header summary. `remainingBalance`/`totalFee` are `null` for a series
-  // whose fee isn't set yet ("Belirlenmedi"); those contribute 0 here — an
-  // unknown fee can't be counted as owed until someone sets it. Sprint 16 —
-  // all three totals (Toplam Borç/Toplam Tahsilat/Kalan Bakiye) come from
-  // the exact same already-fetched `treatmentSeries` prop, no new query;
-  // `totalRemainingBalance` was already computed this way since Sprint 8,
-  // just extended with the other two sums here rather than re-derived
-  // elsewhere.
-  const visibleSeriesForTotals = treatmentSeries.filter((series) => series.status !== "voided")
-  const totalFee = visibleSeriesForTotals.reduce((sum, series) => sum + (series.totalFee ?? 0), 0)
-  const totalPaid = visibleSeriesForTotals.reduce((sum, series) => sum + series.paidAmount, 0)
-  const totalRemainingBalance = visibleSeriesForTotals.reduce((sum, series) => sum + (series.remainingBalance ?? 0), 0)
-  const hasAnyFee = visibleSeriesForTotals.some((series) => series.totalFee !== null)
-
   const now = new Date()
+
   const nextAppointment = appointments
     .filter((appointment) => appointment.status !== "cancelled" && new Date(appointment.startsAt) > now)
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0]
-  // Sprint 17 — "Son Randevu", the same already-fetched `appointments` prop,
-  // just the mirror-image filter/sort of `nextAppointment` above (past
-  // instead of future, soonest-first instead of latest-first). No new query.
   const lastAppointment = appointments
     .filter((appointment) => appointment.status !== "cancelled" && new Date(appointment.startsAt) <= now)
     .sort((a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime())[0]
+  const upcomingProcedure = nextAppointment?.procedureName ?? nextAppointment?.reason ?? null
 
-  // Sprint 17 — "Son Tahsilat": every series already carries its own
-  // `payments` list (paid_at DESC) from `getTreatmentSeriesForPatientWithDetails`
-  // — flattening and re-sorting across series in memory finds the patient-wide
-  // latest collection without a new or extended query. `refund`/`adjustment`
-  // entries are excluded — "son tahsilat" means money collected, not a
-  // correction to a prior one.
-  const lastPayment = visibleSeriesForTotals
-    .flatMap((series) => series.payments)
+  // --- Financials from the new plan model, per currency ---------------------
+  const activePlans = treatmentPlans.filter((plan) => plan.status !== "voided")
+
+  const balanceByCurrency = new Map<string, number>()
+  for (const plan of activePlans) {
+    for (const entry of plan.currencyTotals) {
+      if (entry.remaining !== null) {
+        balanceByCurrency.set(entry.currency, (balanceByCurrency.get(entry.currency) ?? 0) + entry.remaining)
+      }
+    }
+  }
+  const outstanding = sortCurrencyEntries(
+    Array.from(balanceByCurrency.entries())
+      .map(([currency, amount]) => ({ currency, amount }))
+      .filter((entry) => entry.amount > 0),
+  )
+  const hasBalanceDue = outstanding.length > 0
+  const balanceValue = hasBalanceDue
+    ? outstanding.map((entry) => formatCurrency(entry.amount, entry.currency)).join(" + ")
+    : formatCurrency(0, "TRY")
+
+  const lastPayment = activePlans
+    .flatMap((plan) => plan.payments)
     .filter((payment) => payment.entryType === "payment")
     .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())[0]
 
-  const hasBalanceDue = totalRemainingBalance > 0
-
-  // Sprint 29 — "Yaklaşan Randevu" card data: same already-computed
-  // `nextAppointment` above, just the fields this compact card needs.
-  // `procedureName` already covers plan-item/standalone/legacy-series in
-  // that priority order (see `mapAppointmentListRow`) — `reason` is only
-  // the last resort for a genuinely treatment-less appointment.
-  const upcomingProcedure = nextAppointment?.procedureName ?? nextAppointment?.reason ?? null
-
-  // Sprint 29 — "Ödemeler" bölümünün "Ödeme Ekle" seçenekleri: yeni sistemin
-  // ödenebilir (voided olmayan, kalan bakiyesi olan/belirsiz) planları.
+  // Payable plans for the "Ödeme Ekle" action (non-voided, with an open/unknown balance).
   const payablePlans = treatmentPlans
     .filter(
       (plan) =>
@@ -132,196 +188,150 @@ function PatientDetailView({
       currencyBalances: plan.currencyTotals.map((entry) => ({ currency: entry.currency, remaining: entry.remaining })),
     }))
 
-  // Sprint 24 — "Sonraki Randevu" moved out of this strip into the
-  // "Yaklaşan Randevu" card above, so this strip only carries genuinely
-  // *secondary* facts. The financial figures (Toplam Borç/Tahsilat/Son
-  // Tahsilat) are gated behind `canManage` (every role except doctor) —
-  // founder decision 2026-07-28: beauty_specialist and secretary can both
-  // *see* a patient's balance, even though only owner/secretary/
-  // beauty_specialist can actually collect a payment (`canManagePayments`,
-  // used below for Ödemeler's "Ödeme Ekle" action).
-  const statItems = [
-    ...(hasAnyFee && canManage
-      ? [
-          { label: "Toplam Borç", value: `${totalFee.toLocaleString("tr-TR")} TRY` },
-          { label: "Toplam Tahsilat", value: `${totalPaid.toLocaleString("tr-TR")} TRY` },
-        ]
-      : []),
-    {
-      label: "Son Randevu",
-      value: lastAppointment
-        ? formatIstanbulDateTime(lastAppointment.startsAt, { day: "numeric", month: "short" })
-        : "—",
-    },
-    ...(canManage
-      ? [
-          {
-            label: "Son Tahsilat",
-            value: lastPayment
-              ? `${lastPayment.amount.toLocaleString("tr-TR")} ${lastPayment.currency} · ${format(new Date(lastPayment.paidAt), "d MMM", { locale: tr })}`
-              : "—",
-          },
-        ]
-      : []),
-  ]
-
   return (
     <PageContainer>
       <AppointmentErrorToast message={appointmentError} />
       <BreadcrumbLabel value={patient.fullName} />
 
-      {/* Sprint 23 — reconsidered Sprint 22's single gradient hero: cramming
-          identity, a big balance figure, and four action buttons into one
-          colored block made it a busy control panel, not a calm identity
-          zone (Stripe/Attio's customer-record headers stay quiet; actions
-          live in a plain toolbar just below, not inside the branded block).
-          Split back into three purposeful, unstyled-background zones:
-          identity stays quiet, the toolbar is plain buttons with no card
-          chrome, and Kalan Bakiye — the single most operationally relevant
-          number on this page — gets promoted into its own hero stat instead
-          of being a corner label in the header. */}
-      {/* Project Evolution V2 — the avatar loses its tinted-square fill for a
-          bare ring (a hero-scale identity moment doesn't need a color-block
-          badge, per the "Editorial" audit direction), and the name moves to
-          the display serif at genuine headline scale — the single largest
-          typographic moment on the page, carrying "this is whose record you
-          are looking at" on weight/size alone. */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      {/* Identity band — quiet, editorial. Actions sit to the right; the
+          destructive delete is a subdued ghost icon so it never competes with
+          the primary actions (Sprint 33 UX pass). */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <div className="ring-border text-foreground flex size-14 shrink-0 items-center justify-center rounded-full text-lg font-medium ring-1">
             {getInitials(patient.fullName)}
           </div>
-          <div>
-            <h1 className="font-display text-4xl font-normal tracking-tight sm:text-5xl">{patient.fullName}</h1>
-            <p className="text-muted-foreground mt-1 font-mono text-sm">
-              {formatTurkishPhoneDisplay(patient.phone)}
-            </p>
+          <div className="min-w-0">
+            <h1 className="font-display truncate text-3xl font-normal tracking-tight sm:text-4xl">{patient.fullName}</h1>
+            <p className="text-muted-foreground mt-1 font-mono text-sm">{formatTurkishPhoneDisplay(patient.phone)}</p>
           </div>
         </div>
-        {canManage && <PatientDeleteDialog patientId={patient.id} patientName={patient.fullName} />}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" asChild>
+            <Link href={`/appointments/new?patientId=${patient.id}`}>
+              <Plus />
+              Randevu Oluştur
+            </Link>
+          </Button>
+          {canManage && (
+            <PatientEditSheet
+              patient={patient}
+              staffOptions={staffOptions}
+              trigger={
+                <Button size="sm" variant="outline">
+                  <Pencil />
+                  Hastayı Düzenle
+                </Button>
+              }
+            />
+          )}
+          {canManage && (
+            <PatientDeleteDialog
+              patientId={patient.id}
+              patientName={patient.fullName}
+              triggerLabel=""
+              triggerVariant="ghost"
+              triggerSize="icon-sm"
+              triggerClassName="text-muted-foreground hover:text-destructive"
+            />
+          )}
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" asChild>
-          <Link href={`/appointments/new?patientId=${patient.id}`}>
-            <Plus />
-            Randevu Oluştur
-          </Link>
-        </Button>
+      {/* KPI strip — the three questions a clinic asks first. */}
+      <div className={cn("grid grid-cols-1 gap-4", canManage ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2")}>
         {canManage && (
-          <PatientEditSheet
-            patient={patient}
-            staffOptions={staffOptions}
-            trigger={
-              <Button size="sm" variant="outline">
-                <Pencil />
-                Hastayı Düzenle
-              </Button>
+          <KpiCard
+            label="Kalan Bakiye"
+            value={balanceValue}
+            tone={hasBalanceDue ? "warning" : "default"}
+            icon={Wallet}
+            hint={
+              lastPayment
+                ? `Son tahsilat: ${formatCurrency(lastPayment.amount, lastPayment.currency)} · ${format(new Date(lastPayment.paidAt), "d MMM", { locale: tr })}`
+                : "Henüz tahsilat yok"
             }
           />
         )}
+        <KpiCard
+          label="Yaklaşan Randevu"
+          value={
+            nextAppointment
+              ? formatIstanbulDateTime(nextAppointment.startsAt, { day: "numeric", month: "long" })
+              : "Yok"
+          }
+          icon={CalendarClock}
+          hint={
+            nextAppointment
+              ? `${upcomingProcedure ?? "İşlem belirtilmedi"} · ${nextAppointment.staffName}`
+              : "Planlanmış randevu yok"
+          }
+        />
+        <KpiCard
+          label="Son Randevu"
+          value={
+            lastAppointment
+              ? formatIstanbulDateTime(lastAppointment.startsAt, { day: "numeric", month: "long" })
+              : "—"
+          }
+          icon={CalendarDays}
+          hint={lastAppointment ? (lastAppointment.procedureName ?? lastAppointment.staffName) : "Geçmiş randevu yok"}
+        />
       </div>
 
-      {/* Sprint 29 — "Yaklaşan Randevu": the single answer to "ne zaman
-          gelecek", replacing the old "Sıradaki" banner (which mixed in a
-          next-pending-session prompt from the now-hidden legacy Tedaviler
-          system) and the full Randevular list below. Past appointments
-          aren't gone — they move to Geçmiş. */}
-      {nextAppointment && (
-        <Card size="sm" className="border-primary/20 bg-primary/5">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3">
-            <div className="space-y-1">
-              <p className="text-xs text-primary">Yaklaşan Randevu</p>
-              <p className="text-sm font-medium">
-                {formatIstanbulDateTime(nextAppointment.startsAt, { day: "numeric", month: "long" })}
-              </p>
-              <p className="text-muted-foreground text-sm">
-                {upcomingProcedure ?? "İşlem belirtilmedi"} · {nextAppointment.staffName}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {(statItems.length > 0 || (hasAnyFee && canManage)) && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr]">
-          {hasAnyFee && canManage && (
-            <div
-              className={cn(
-                "flex flex-col justify-center rounded-2xl border p-6 sm:min-w-72",
-                hasBalanceDue ? "border-warning/25 bg-warning/5" : "border-border bg-muted/20",
-              )}
-            >
-              <p
-                className={cn(
-                  "text-[11px] font-semibold tracking-[0.08em] uppercase",
-                  hasBalanceDue ? "text-warning" : "text-muted-foreground",
-                )}
-              >
-                Kalan Bakiye
-              </p>
-              <p
-                className={cn(
-                  "font-display mt-1 text-5xl font-light tracking-tight tabular-nums",
-                  hasBalanceDue && "text-warning",
-                )}
-              >
-                {totalRemainingBalance.toLocaleString("tr-TR")} TRY
-              </p>
-            </div>
-          )}
-          <InfoGrid className="grid-cols-2 gap-4 p-4 text-sm sm:grid-cols-3" items={statItems} />
+      {/* Body — sticky personal info + tabbed operational content. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr] lg:items-start">
+        <div className="lg:sticky lg:top-6">
+          <PatientInfoPanel patient={patient} />
         </div>
-      )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
-        <PatientInfoPanel patient={patient} />
+        <Tabs defaultValue="tedavi">
+          <TabsList>
+            <TabsTrigger value="tedavi">
+              <Stethoscope />
+              Tedavi &amp; Ödeme
+            </TabsTrigger>
+            <TabsTrigger value="randevular">
+              <CalendarDays />
+              Randevular
+            </TabsTrigger>
+            <TabsTrigger value="gecmis">
+              <History />
+              Geçmiş
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="flex flex-col gap-8">
-          {/* Sprint 29 — the 3-second test (founder mandate): "ne zaman
-              gelecek" is answered above (Yaklaşan Randevu), so this stack
-              opens with "hangi tedavisi devam ediyor" (Aktif Tedavi Planı),
-              then "ne kadar borcu kaldı" (Ödemeler). The legacy Tedaviler
-              (package) section is retired from this page — clean start with
-              the Sprint 28 plan system; old records stay in the database,
-              just no longer surfaced here. */}
-          <PageSection
-            title="Aktif Tedavi Planı"
-            icon={Stethoscope}
-            actions={
-              <Button size="sm" variant="outline" asChild>
-                <Link href={`/patients/${patient.id}/treatment-plans/new`}>
-                  <Plus />
-                  Paket / Tedavi Tanımla
-                </Link>
-              </Button>
-            }
-          >
-            <TreatmentPlanList
-              plans={treatmentPlans}
-              isOwner={isOwner}
-              providers={staffOptions}
-              actor={treatmentPlanActor}
-            />
-          </PageSection>
+          <TabsContent value="tedavi" className="flex flex-col gap-8">
+            <PageSection
+              title="Aktif Tedavi Planı"
+              icon={Stethoscope}
+              actions={
+                <Button size="sm" asChild>
+                  <Link href={`/patients/${patient.id}/treatment-plans/new`}>
+                    <Plus />
+                    Paket / Tedavi Tanımla
+                  </Link>
+                </Button>
+              }
+            >
+              <TreatmentPlanList
+                plans={treatmentPlans}
+                isOwner={isOwner}
+                providers={staffOptions}
+                actor={treatmentPlanActor}
+              />
+            </PageSection>
 
-          <PageSection
-            title="Ödemeler"
-            icon={Wallet}
-            actions={canManagePayments && <PatientPlanPaymentSheet planOptions={payablePlans} />}
-          >
-            <PatientPaymentsSection treatmentPlans={treatmentPlans} />
-          </PageSection>
+            <PageSection
+              title="Ödemeler"
+              icon={Wallet}
+              actions={canManagePayments && <PatientPlanPaymentSheet planOptions={payablePlans} />}
+            >
+              <PatientPaymentsSection treatmentPlans={treatmentPlans} />
+            </PageSection>
+          </TabsContent>
 
-          {/* Founder feedback 2026-08-11 (live testing): "Yaklaşan Randevu"
-              alone wasn't enough — every appointment created for this patient
-              (past and upcoming) needs its own detailed, actionable section,
-              not folded into Geçmiş as a footnote. Reuses `AppointmentAgendaList`
-              exactly as its own doc comment anticipated (`linkTarget="appointment"`
-              — once you're already on the patient, drilling into one specific
-              appointment is the useful next step), so Düzenle/İptal Et/Sil are
-              reachable right here, not just from the appointment's own page. */}
-          <PageSection title="Randevular" icon={CalendarDays}>
+          <TabsContent value="randevular">
             <AppointmentAgendaList
               appointments={appointments}
               emptyTitle="Henüz randevu yok"
@@ -332,39 +342,28 @@ function PatientDetailView({
               patientOptions={patientOptions}
               staffOptions={staffOptions}
             />
-          </PageSection>
+          </TabsContent>
 
-          {/* Sprint 29 — "Geçmiş" (renamed from "Aktivite Geçmişi"). Past
-              appointments moved into the "Randevular" section above
-              (2026-08-11) — this stays the activity/notes timeline only. */}
-          <PageSection title="Geçmiş" icon={History}>
-            <PatientActivityTimeline
-              patientId={patient.id}
-              activities={activities}
-              canAddNote={canManage}
-            />
-          </PageSection>
+          <TabsContent value="gecmis" className="flex flex-col gap-8">
+            <PatientActivityTimeline patientId={patient.id} activities={activities} canAddNote={canManage} />
 
-          {/* Sprint 29 — AI Özet defaults collapsed (founder decision: AI box
-              off by default). Reuses the same Collapsible/CollapsibleToggleTrigger
-              pattern already used 5 other places, no new primitive. */}
-          <Collapsible>
-            <CollapsibleToggleTrigger>
-              <span className="text-lg font-semibold tracking-tight text-foreground">AI Özet</span>
-            </CollapsibleToggleTrigger>
-            <CollapsibleContent className="pt-4">
-              <PatientAIInsightsPanel summary={aiSummary} />
-            </CollapsibleContent>
-          </Collapsible>
+            <Collapsible>
+              <CollapsibleToggleTrigger>
+                <span className="text-foreground text-lg font-semibold tracking-tight">AI Özet</span>
+              </CollapsibleToggleTrigger>
+              <CollapsibleContent className="pt-4">
+                <PatientAIInsightsPanel summary={aiSummary} />
+              </CollapsibleContent>
+            </Collapsible>
 
-          {/* Sprint 21 — Belgeler henüz gerçek bir modül değil. */}
-          <PageSection title="Yakında">
-            <PlaceholderCard
-              icon={FileText}
-              text="Belge yönetimi henüz aktif değil — rıza formları ve diğer belgeler burada saklanabilecek."
-            />
-          </PageSection>
-        </div>
+            <PageSection title="Belgeler" icon={FileText}>
+              <PlaceholderCard
+                icon={FileText}
+                text="Belge yönetimi henüz aktif değil — rıza formları ve diğer belgeler burada saklanabilecek."
+              />
+            </PageSection>
+          </TabsContent>
+        </Tabs>
       </div>
     </PageContainer>
   )
