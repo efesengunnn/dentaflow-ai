@@ -1,5 +1,4 @@
-import { Sparkles } from "lucide-react";
-
+import { BrandMark } from "@/components/layout/brand-mark";
 import { NavMain } from "@/components/layout/nav-main";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import {
@@ -18,7 +17,7 @@ export function AppSidebar({ clinicName, role }: { clinicName: string; role: Sta
       <SidebarHeader className="gap-4 pt-2">
         <div className="flex items-center gap-2.5 px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
           <div className="bg-primary text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-xl shadow-xs">
-            <Sparkles className="size-4" />
+            <BrandMark className="size-4" />
           </div>
           <span className="text-[0.95rem] font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
             DentaFlow <span className="text-primary">AI</span>

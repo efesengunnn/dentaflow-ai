@@ -1,9 +1,9 @@
 "use client"
 
-import { Sparkles } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 
+import { BrandMark } from "@/components/layout/brand-mark"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -62,7 +62,7 @@ export default function DavetPage() {
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center gap-2 text-center">
           <div className="bg-primary text-primary-foreground flex size-9 items-center justify-center rounded-lg">
-            <Sparkles className="size-4.5" />
+            <BrandMark className="size-4.5" />
           </div>
           <h1 className="text-lg font-semibold tracking-tight">DentaFlow AI</h1>
         </div>
