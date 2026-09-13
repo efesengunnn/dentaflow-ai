@@ -31,7 +31,7 @@ function TreatmentPlanTreatmentsStep({
   providerName: string
   catalog: CatalogItem[]
   selections: DraftTreatmentSelection[]
-  onToggleCatalogItem: (treatmentName: string, currency: string) => void
+  onToggleCatalogItem: (treatmentName: string, currency: string, defaultPrice: number | null) => void
   onAddCustom: (name: string) => void
   onRemoveCustom: (key: string) => void
 }) {
@@ -88,7 +88,7 @@ function TreatmentPlanTreatmentsStep({
                 className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-2 transition-colors duration-150 hover:bg-muted/40 has-[[data-checked]]:bg-primary/5"
               >
                 <span className="flex items-center gap-3">
-                  <Checkbox checked={checked} onCheckedChange={() => onToggleCatalogItem(item.treatmentType, item.currency)} />
+                  <Checkbox checked={checked} onCheckedChange={() => onToggleCatalogItem(item.treatmentType, item.currency, item.defaultPrice)} />
                   <span className="font-medium">{item.treatmentType}</span>
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">

@@ -54,9 +54,10 @@ function createId(): string {
  *
  * Adım 2 artık gerçek `staff_treatment_catalog_items` verisini kullanır
  * (`fetchCatalogForStaff`) — sabit `MOCK_CATALOG` tamamen kaldırıldı (Sprint
- * 28C'deki geçici karar, founder talimatıyla geri alındı). Seans sayısı ve
- * fiyat hep elle girilir — hiçbir varsayılan değer önerilmez (founder
- * kararı: "Varsayılan seans sayısı İSTEMİYORUM").
+ * 28C'deki geçici karar, founder talimatıyla geri alındı). Seans sayısı hiçbir
+ * zaman varsayılan önermez, hep elle girilir (founder kararı: "Varsayılan seans
+ * sayısı İSTEMİYORUM"). Birim fiyat ise katalogdaki `default_price`'tan Adım
+ * 4'e otomatik gelir ve orada değiştirilebilir (founder talimatı 2026-09-13).
  */
 function TreatmentPlanBuilder({
   patientId,
@@ -102,7 +103,7 @@ function TreatmentPlanBuilder({
     }
   }, [draftProvider, loadedCatalogForProviderId])
 
-  function handleToggleCatalogItem(treatmentName: string, currency: string) {
+  function handleToggleCatalogItem(treatmentName: string, currency: string, defaultPrice: number | null) {
     setDraftTreatments((prev) => {
       const existing = prev.find((row) => !row.isCustom && row.treatmentName === treatmentName)
       if (existing) return prev.filter((row) => row !== existing)
@@ -113,7 +114,9 @@ function TreatmentPlanBuilder({
           treatmentName,
           isCustom: false,
           sessionCount: 1,
-          unitPrice: undefined,
+          // Katalog fiyatı Adım 4'e otomatik gelir; kullanıcı orada değiştirebilir
+          // (founder talimatı 2026-09-13). `null` = "Belirlenmedi" → boş bırakılır.
+          unitPrice: defaultPrice ?? undefined,
           currency: (currency as CurrencyCode) ?? "TRY",
           controlDate: undefined,
         },

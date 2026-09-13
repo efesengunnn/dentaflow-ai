@@ -159,17 +159,23 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
     setValue("staffId", provider.id)
   }
 
-  function selectSingleTreatment(name: string, currency: CurrencyCode) {
+  function selectSingleTreatment(name: string, currency: CurrencyCode, defaultPrice: number | null) {
     setSingleTreatmentName(name)
     setSingleCurrency(currency)
     setValue("standaloneTreatmentName", name)
     setValue("standaloneCurrency", currency)
+    // Katalog fiyatı otomatik gelir; kullanıcı aşağıdaki fiyat kutusundan
+    // değiştirebilir (founder talimatı 2026-09-13). `null` = "Belirlenmedi" → boş.
+    const price = defaultPrice ?? undefined
+    setSinglePrice(price)
+    setValue("standalonePrice", price)
   }
 
   function confirmSingleCustomTreatment() {
     const trimmed = singleCustomName.trim()
     if (!trimmed) return
-    selectSingleTreatment(trimmed, "TRY")
+    // Serbest işlem katalogda yok — fiyat girilmez, elle girilir.
+    selectSingleTreatment(trimmed, "TRY", null)
     setSingleCustomOpen(false)
   }
 
@@ -289,7 +295,7 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => selectSingleTreatment(item.treatmentType, item.currency as CurrencyCode)}
+                          onClick={() => selectSingleTreatment(item.treatmentType, item.currency as CurrencyCode, item.defaultPrice)}
                           className={cn(
                             "flex min-h-11 items-center justify-between gap-3 rounded-lg border p-3 text-left text-sm font-medium transition-colors duration-150 hover:bg-muted/40",
                             checked ? "border-primary bg-primary/5" : "border-border",
