@@ -33,11 +33,18 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  // Do not add logic between createServerClient and getUser() — a stray
+  // Do not add logic between createServerClient and getClaims() — a stray
   // early return here can make session refresh silently stop working.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  //
+  // getClaims() (not getUser()): the project signs JWTs with an asymmetric
+  // key (ECC P-256), so this verifies the token locally via WebCrypto with no
+  // round trip to the Auth server — getUser() hit GoTrue over the network on
+  // *every* request that this matcher catches (i.e. almost all of them). Like
+  // getUser(), getClaims() still refreshes an about-to-expire session first
+  // (writing the refreshed cookies through the setAll handler above), so
+  // session refresh keeps working. `data` is null when there's no session.
+  const { data } = await supabase.auth.getClaims();
+  const isAuthenticated = data?.claims != null;
 
   const isPublicPath = PUBLIC_PATHS.some((path) =>
     request.nextUrl.pathname.startsWith(path),
@@ -50,13 +57,13 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  if (!user && !isPublicPath) {
+  if (!isAuthenticated && !isPublicPath) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     return NextResponse.redirect(loginUrl);
   }
 
-  if (user && isPublicPath) {
+  if (isAuthenticated && isPublicPath) {
     const dashboardUrl = request.nextUrl.clone();
     dashboardUrl.pathname = "/dashboard";
     return NextResponse.redirect(dashboardUrl);

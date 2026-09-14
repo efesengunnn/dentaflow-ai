@@ -24,17 +24,23 @@ export type CurrentStaffMember = {
  *
  * Wrapped in React's `cache()`: `(app)/layout.tsx` and most `page.tsx` files
  * both call this per request (the layout to resolve the sidebar identity,
- * the page for role-gating). Without `cache()` that's two round trips to
- * Supabase Auth + Postgres on every navigation; `cache()` deduplicates
- * identical calls within the same request render pass, so it's one.
+ * the page for role-gating). Without `cache()` that's two Postgres round trips
+ * on every navigation; `cache()` deduplicates identical calls within the same
+ * request render pass, so it's one.
+ *
+ * Identity comes from `getClaims()`, not `getUser()`: the project signs JWTs
+ * with an asymmetric key (ECC P-256), so the token is verified locally via
+ * WebCrypto with no round trip to the Auth server — `getUser()` hit GoTrue
+ * over the network here on every page render (and again on every
+ * `revalidatePath`), stacked on top of the identical hop the middleware
+ * already pays. `claims.sub` is the user id; `claims.email` the email.
  */
 export const getCurrentStaffMember = cache(async (): Promise<CurrentStaffMember | null> => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
 
-  if (!user) return null;
+  if (!claims) return null;
 
   // `clinics!staff_members_clinic_id_fkey` disambiguates the embed: `clinics`
   // now has a *second* FK back to `staff_members` (`clinics.updated_by`, added
@@ -47,7 +53,7 @@ export const getCurrentStaffMember = cache(async (): Promise<CurrentStaffMember 
   const { data: staffMember } = await supabase
     .from("staff_members")
     .select("full_name, role, clinic_id, clinics!staff_members_clinic_id_fkey(name)")
-    .eq("id", user.id)
+    .eq("id", claims.sub)
     .eq("is_active", true)
     .is("deleted_at", null)
     .single();
@@ -55,8 +61,8 @@ export const getCurrentStaffMember = cache(async (): Promise<CurrentStaffMember 
   if (!staffMember) return null;
 
   return {
-    userId: user.id,
-    email: user.email ?? null,
+    userId: claims.sub,
+    email: claims.email ?? null,
     fullName: staffMember.full_name,
     role: staffMember.role,
     roleLabel: ROLE_LABELS[staffMember.role],
