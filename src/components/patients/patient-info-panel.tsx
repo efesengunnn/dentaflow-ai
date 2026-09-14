@@ -36,10 +36,6 @@ function PatientInfoPanel({ patient }: { patient: PatientDetail }) {
           }
         />
         <InfoRow
-          label="Kaynak"
-          value={patient.leadId ? "Potansiyel Müşteriden Dönüştürüldü" : "Doğrudan Kayıt"}
-        />
-        <InfoRow
           label="Oluşturulma Tarihi"
           value={format(new Date(patient.createdAt), "d MMMM yyyy", { locale: tr })}
         />

@@ -1,4 +1,4 @@
-import { PATIENTS_PAGE_SIZE, type PatientActivityType, type PatientOrigin } from "@/lib/patients/constants"
+import { PATIENTS_PAGE_SIZE, type PatientActivityType } from "@/lib/patients/constants"
 import { sanitizeSearchTerm } from "@/lib/supabase/query-helpers"
 import { createClient } from "@/lib/supabase/server"
 
@@ -34,7 +34,6 @@ export async function getPatientOptions(): Promise<PatientOption[]> {
 
 export type PatientListFilters = {
   search?: string
-  origin?: PatientOrigin
   page?: number
 }
 
@@ -43,7 +42,6 @@ export type PatientListRow = {
   fullName: string
   phone: string
   email: string | null
-  leadId: string | null
   createdAt: string
 }
 
@@ -54,14 +52,13 @@ export type PatientListResult = {
   pageSize: number
 }
 
-const PATIENT_LIST_SELECT = "id, full_name, phone, email, lead_id, created_at"
+const PATIENT_LIST_SELECT = "id, full_name, phone, email, created_at"
 
 function mapPatientListRow(row: {
   id: string
   full_name: string
   phone: string
   email: string | null
-  lead_id: string | null
   created_at: string
 }): PatientListRow {
   return {
@@ -69,7 +66,6 @@ function mapPatientListRow(row: {
     fullName: row.full_name,
     phone: row.phone,
     email: row.email,
-    leadId: row.lead_id,
     createdAt: row.created_at,
   }
 }
@@ -90,11 +86,6 @@ export async function getPatients(filters: PatientListFilters): Promise<PatientL
   const term = filters.search ? sanitizeSearchTerm(filters.search) : ""
   if (term) {
     query = query.or(`full_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`)
-  }
-  if (filters.origin === "converted") {
-    query = query.not("lead_id", "is", null)
-  } else if (filters.origin === "direct") {
-    query = query.is("lead_id", null)
   }
 
   const { data, count, error } = await query
@@ -122,10 +113,9 @@ export type PatientExportRow = {
   email: string | null
   tcKimlikNo: string | null
   dateOfBirth: string | null
-  leadId: string | null
 }
 
-const PATIENT_EXPORT_SELECT = "id, full_name, phone, email, tc_kimlik_no, date_of_birth, lead_id"
+const PATIENT_EXPORT_SELECT = "id, full_name, phone, email, tc_kimlik_no, date_of_birth"
 
 function mapPatientExportRow(row: {
   id: string
@@ -134,7 +124,6 @@ function mapPatientExportRow(row: {
   email: string | null
   tc_kimlik_no: string | null
   date_of_birth: string | null
-  lead_id: string | null
 }): PatientExportRow {
   return {
     id: row.id,
@@ -143,13 +132,12 @@ function mapPatientExportRow(row: {
     email: row.email,
     tcKimlikNo: row.tc_kimlik_no,
     dateOfBirth: row.date_of_birth,
-    leadId: row.lead_id,
   }
 }
 
 /** Same filters as `getPatients`, no pagination — feeds the Excel export route. */
 export async function getAllPatientsForExport(
-  filters: Pick<PatientListFilters, "search" | "origin">,
+  filters: Pick<PatientListFilters, "search">,
 ): Promise<PatientExportRow[]> {
   const supabase = await createClient()
 
@@ -162,11 +150,6 @@ export async function getAllPatientsForExport(
   const term = filters.search ? sanitizeSearchTerm(filters.search) : ""
   if (term) {
     query = query.or(`full_name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`)
-  }
-  if (filters.origin === "converted") {
-    query = query.not("lead_id", "is", null)
-  } else if (filters.origin === "direct") {
-    query = query.is("lead_id", null)
   }
 
   const { data, error } = await query
@@ -182,7 +165,6 @@ export type PatientDetail = {
   email: string | null
   tcKimlikNo: string | null
   dateOfBirth: string | null
-  leadId: string | null
   createdAt: string
   updatedAt: string
 }
@@ -191,7 +173,7 @@ export async function getPatientById(id: string): Promise<PatientDetail | null> 
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("patients")
-    .select("id, full_name, phone, email, tc_kimlik_no, date_of_birth, lead_id, created_at, updated_at")
+    .select("id, full_name, phone, email, tc_kimlik_no, date_of_birth, created_at, updated_at")
     .eq("id", id)
     .is("deleted_at", null)
     .single()
@@ -205,7 +187,6 @@ export async function getPatientById(id: string): Promise<PatientDetail | null> 
     email: data.email,
     tcKimlikNo: data.tc_kimlik_no,
     dateOfBirth: data.date_of_birth,
-    leadId: data.lead_id,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   }

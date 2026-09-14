@@ -6,7 +6,6 @@ import { NextResponse } from "next/server"
 import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
 import { dateStringToLocalDate } from "@/lib/format/date"
 import { formatTurkishPhoneDisplay } from "@/lib/format/phone"
-import type { PatientOrigin } from "@/lib/patients/constants"
 import { getAllPatientsForExport } from "@/lib/patients/queries"
 import { createClient } from "@/lib/supabase/server"
 
@@ -23,7 +22,6 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const rows = await getAllPatientsForExport({
     search: searchParams.get("search") ?? undefined,
-    origin: (searchParams.get("origin") as PatientOrigin | null) ?? undefined,
   })
 
   const workbook = new Workbook()
@@ -34,7 +32,6 @@ export async function GET(request: Request) {
     { header: "TC Kimlik No", key: "tcKimlikNo", width: 16 },
     { header: "Doğum Tarihi", key: "dateOfBirth", width: 16 },
     { header: "E-posta", key: "email", width: 26 },
-    { header: "Kaynak", key: "origin", width: 18 },
   ]
   sheet.getRow(1).font = { bold: true }
 
@@ -46,7 +43,6 @@ export async function GET(request: Request) {
       tcKimlikNo: row.tcKimlikNo ?? "",
       dateOfBirth: dateOfBirth ? format(dateOfBirth, "d MMMM yyyy", { locale: tr }) : "",
       email: row.email ?? "",
-      origin: row.leadId ? "Potansiyel Müşteriden Dönüştürüldü" : "Doğrudan Kayıt",
     })
   }
 

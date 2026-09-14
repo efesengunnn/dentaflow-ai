@@ -1,9 +1,7 @@
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
-import { Sparkles } from "lucide-react"
 import Link from "next/link"
 
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { formatTurkishPhoneDisplay } from "@/lib/format/phone"
 import type { PatientListRow } from "@/lib/patients/queries"
@@ -23,12 +21,6 @@ function PatientCard({ patient }: { patient: PatientListRow }) {
                 {patient.fullName}
               </span>
             </div>
-            {patient.leadId && (
-              <Badge variant="secondary">
-                <Sparkles />
-                Potansiyel Müşteri
-              </Badge>
-            )}
           </div>
           <div className="flex flex-col gap-0.5 text-sm text-muted-foreground">
             <span className="font-mono">{formatTurkishPhoneDisplay(patient.phone)}</span>

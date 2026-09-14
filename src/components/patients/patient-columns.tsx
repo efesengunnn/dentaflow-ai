@@ -3,10 +3,8 @@
 import type { ColumnDef } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
-import { Sparkles } from "lucide-react"
 
 import { TruncatedCell } from "@/components/shared/truncated-cell"
-import { Badge } from "@/components/ui/badge"
 import { formatTurkishPhoneDisplay } from "@/lib/format/phone"
 import type { PatientListRow } from "@/lib/patients/queries"
 import { getInitials } from "@/lib/utils"
@@ -43,19 +41,6 @@ const patientColumns: ColumnDef<PatientListRow>[] = [
         )}
       </div>
     ),
-  },
-  {
-    accessorKey: "leadId",
-    header: "Kaynak",
-    cell: ({ row }) =>
-      row.original.leadId ? (
-        <Badge variant="secondary">
-          <Sparkles />
-          Potansiyel Müşteriden Dönüştürüldü
-        </Badge>
-      ) : (
-        <span className="text-muted-foreground">Doğrudan</span>
-      ),
   },
   {
     accessorKey: "createdAt",

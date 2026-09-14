@@ -8,13 +8,11 @@ import { PageContainer } from "@/components/shared/page-container"
 import { PageHeader } from "@/components/shared/page-header"
 import { Button } from "@/components/ui/button"
 import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
-import type { PatientOrigin } from "@/lib/patients/constants"
 import { getPatients } from "@/lib/patients/queries"
 
 type PatientsPageProps = {
   searchParams: Promise<{
     search?: string
-    origin?: string
     page?: string
   }>
 }
@@ -27,7 +25,6 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
     getCurrentStaffMember(),
     getPatients({
       search: params.search,
-      origin: params.origin as PatientOrigin | undefined,
       page,
     }),
   ])
@@ -36,7 +33,6 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
 
   const exportParams = new URLSearchParams()
   if (params.search) exportParams.set("search", params.search)
-  if (params.origin) exportParams.set("origin", params.origin)
   const exportHref = `/patients/export${exportParams.toString() ? `?${exportParams.toString()}` : ""}`
 
   return (
