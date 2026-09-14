@@ -65,7 +65,7 @@ function TreatmentPlanSummaryStep({
           const subtotals = totalsByCurrency(providerItems)
           return (
             <div key={providerId} className="flex flex-col gap-1.5">
-              <p className="text-sm font-semibold">{providerNameById[providerId] ?? "Sağlayıcı"}</p>
+              <p className="text-sm font-semibold">{providerNameById[providerId] ?? "Hekim"}</p>
               <div className="flex flex-col gap-1 rounded-xl border border-border p-3">
                 {providerItems.map((item, index) => (
                   <div
@@ -105,10 +105,10 @@ function TreatmentPlanSummaryStep({
 
       {isOwner && providerTotals.length > 0 && (
         <div className="flex flex-col gap-1.5 rounded-xl border border-dashed border-border p-3.5">
-          <p className="text-xs font-medium text-muted-foreground">Sağlayıcı Bazlı Ciro Dağılımı</p>
+          <p className="text-xs font-medium text-muted-foreground">Hekim Bazlı Ciro Dağılımı</p>
           {providerTotals.map(({ providerId, totals }) => (
             <div key={providerId} className="flex items-start justify-between text-sm">
-              <span>{providerNameById[providerId] ?? "Sağlayıcı"}</span>
+              <span>{providerNameById[providerId] ?? "Hekim"}</span>
               <span className="flex flex-col items-end font-medium tabular-nums">
                 {totals.map(([currency, amount]) => (
                   <span key={currency}>{formatMoney(amount, currency)}</span>
@@ -125,7 +125,7 @@ function TreatmentPlanSummaryStep({
           id="treatment-plan-name"
           value={planName}
           onChange={(event) => onPlanNameChange(event.target.value)}
-          placeholder="Örn. Botoks + PRP Planı"
+          placeholder="Örn. İmplant + Kaplama Planı"
         />
       </Field>
     </div>

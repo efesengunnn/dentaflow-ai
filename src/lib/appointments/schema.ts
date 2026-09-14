@@ -33,7 +33,7 @@ const APPOINTMENT_STATUS_VALUES = [
 export const appointmentFormSchema = z
   .object({
     patientId: z.string().min(1, "Hasta seçin."),
-    staffId: z.string().min(1, "Sağlayıcı belirlenemedi."),
+    staffId: z.string().min(1, "Hekim belirlenemedi."),
     date: z.string().min(1, "Tarih seçin."),
     time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Geçerli bir saat seçin."),
     status: z.enum(APPOINTMENT_STATUS_VALUES, { message: "Durum seçin." }),

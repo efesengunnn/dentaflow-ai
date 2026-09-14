@@ -55,7 +55,7 @@ function ClinicSettingsForm({ clinic }: { clinic: ClinicSettings }) {
           control={form.control}
           name="name"
           label="Klinik Adı"
-          render={({ field }) => <Input {...field} placeholder="Örnek Estetik Klinik" />}
+          render={({ field }) => <Input {...field} placeholder="Örnek Diş Kliniği" />}
         />
         <FormField
           control={form.control}

@@ -31,11 +31,11 @@ export type DraftTreatmentSelection = {
 }
 
 const WIZARD_STEPS: TreatmentPlanStepperStep[] = [
-  { number: 1, label: "Sağlayıcı Seç" },
+  { number: 1, label: "Hekim Seç" },
   { number: 2, label: "Tedavileri Seç" },
   { number: 3, label: "Seans Sayısı" },
   { number: 4, label: "Fiyat" },
-  { number: 5, label: "Başka Sağlayıcı" },
+  { number: 5, label: "Başka Hekim" },
   { number: 6, label: "Özet ve Kaydet" },
 ]
 
@@ -260,7 +260,7 @@ function TreatmentPlanBuilder({
           {step === 5 && (
             <div className="flex flex-col gap-4">
               <div>
-                <h3 className="text-base font-medium">Başka Sağlayıcı Ekle</h3>
+                <h3 className="text-base font-medium">Başka Hekim Ekle</h3>
                 <p className="text-sm text-muted-foreground">
                   Bu planda başka bir sağlayıcının uygulayacağı tedaviler var mı?
                 </p>
@@ -268,7 +268,7 @@ function TreatmentPlanBuilder({
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button type="button" variant="outline" className="min-h-11 flex-1" onClick={handleAddAnotherProvider}>
                   <Plus />
-                  Sağlayıcı Ekle
+                  Hekim Ekle
                 </Button>
                 <Button type="button" className="min-h-11 flex-1" onClick={handleContinueToSummary}>
                   Devam Et

@@ -30,6 +30,8 @@ const HEADER_ALIASES: Record<string, string> = {
   "hasta telefon": "patientPhone",
   "hasta telefonu": "patientPhone",
   telefon: "patientPhone",
+  hekim: "staffName",
+  "diş hekimi": "staffName",
   sağlayıcı: "staffName",
   personel: "staffName",
   "sorumlu personel": "staffName",
@@ -135,7 +137,7 @@ export async function parseAppointmentsWorkbook(buffer: Buffer): Promise<Appoint
 
     const staffName = values.staffName?.trim() || ""
     if (!staffName) {
-      errors.push({ rowNumber, message: "Sağlayıcı (personel) boş olamaz." })
+      errors.push({ rowNumber, message: "Hekim (personel) boş olamaz." })
       return
     }
 

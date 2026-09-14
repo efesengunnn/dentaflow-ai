@@ -28,7 +28,7 @@ export default async function PackagesPage({ searchParams }: PackagesPageProps) 
   if (staffMember.role !== "owner") {
     return (
       <PageContainer>
-        <PageHeader title="Paketler" description="Klinikte satılmış her paketin tek listesi." />
+        <PageHeader title="Tedavi Planları" description="Klinikte oluşturulmuş her tedavi planının tek listesi." />
         <p className="text-sm text-muted-foreground">Bu sayfayı yalnızca klinik sahibi kullanabilir.</p>
       </PageContainer>
     )
@@ -38,7 +38,7 @@ export default async function PackagesPage({ searchParams }: PackagesPageProps) 
 
   return (
     <PageContainer>
-      <PageHeader title="Paketler" description="Klinikte satılmış her paketin tek listesi." />
+      <PageHeader title="Tedavi Planları" description="Klinikte oluşturulmuş her tedavi planının tek listesi." />
       <PackageFilters />
       <PackageTableSection rows={rows} />
     </PageContainer>

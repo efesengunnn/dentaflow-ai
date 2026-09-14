@@ -319,7 +319,7 @@ function PatientDetailView({
                 <Button size="sm" asChild>
                   <Link href={`/patients/${patient.id}/treatment-plans/new`}>
                     <Plus />
-                    Paket / Tedavi Tanımla
+                    Tedavi Planı Oluştur
                   </Link>
                 </Button>
               }

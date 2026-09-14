@@ -154,7 +154,7 @@ function AppointmentForm({
           control={form.control}
           name="reason"
           label="Sebep (opsiyonel)"
-          render={({ field }) => <Input {...field} placeholder="Örn. Botoks konsültasyonu" />}
+          render={({ field }) => <Input {...field} placeholder="Örn. Kontrol, dolgu" />}
         />
         <FormField
           control={form.control}

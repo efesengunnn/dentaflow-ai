@@ -25,7 +25,7 @@ function AppointmentInfoPanel({ appointment }: { appointment: AppointmentDetail 
           label="Telefon"
           value={<span className="font-mono">{formatTurkishPhoneDisplay(appointment.patientPhone)}</span>}
         />
-        <InfoRow label="Sağlayıcı" value={appointment.staffName} />
+        <InfoRow label="Hekim" value={appointment.staffName} />
         <InfoRow
           label="Randevu Saati"
           value={formatIstanbulDateTime(appointment.startsAt, { day: "numeric", month: "long", year: "numeric" })}

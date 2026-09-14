@@ -18,8 +18,8 @@ function PackageTableSection({ rows }: { rows: TreatmentPlanListRow[] }) {
       getRowHref={(plan) => `/packages/${plan.id}`}
       renderCard={(plan) => <PackageCard plan={plan} />}
       emptyIcon={Package}
-      emptyTitle="Henüz paket yok"
-      emptyDescription="Bir hastaya paket/tedavi tanımladığınızda burada listelenmeye başlayacak."
+      emptyTitle="Henüz tedavi planı yok"
+      emptyDescription="Bir hastaya tedavi planı tanımladığınızda burada listelenmeye başlayacak."
     />
   )
 }

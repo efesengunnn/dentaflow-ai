@@ -1,16 +1,8 @@
-import { Bell } from "lucide-react";
-
 import { BreadcrumbNav } from "@/components/layout/breadcrumb-nav";
 import { UserMenu } from "@/components/layout/user-menu";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 export function AppHeader({
   user,
@@ -25,20 +17,6 @@ export function AppHeader({
         <BreadcrumbNav />
       </div>
       <div className="ml-auto flex items-center gap-1 sm:gap-1.5">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-lg"
-              className="rounded-xl"
-              aria-label="Bildirimler"
-              disabled
-            >
-              <Bell />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Bildirimler (yakında)</TooltipContent>
-        </Tooltip>
         <ThemeToggle />
         <Separator orientation="vertical" className="mx-1.5 h-5" />
         <UserMenu name={user.name} role={user.role} showRole={user.showRole} />

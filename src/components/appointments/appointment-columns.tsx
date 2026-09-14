@@ -43,7 +43,7 @@ const appointmentColumns: ColumnDef<AppointmentListRow>[] = [
   },
   {
     accessorKey: "staffName",
-    header: "Sağlayıcı",
+    header: "Hekim",
     cell: ({ row }) => <TruncatedCell value={row.original.staffName} maxWidthClassName="max-w-40" />,
   },
   {

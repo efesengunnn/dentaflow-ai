@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     { header: "Saat", key: "time", width: 10 },
     { header: "Hasta", key: "patientName", width: 24 },
     { header: "Telefon", key: "phone", width: 18 },
-    { header: "Sağlayıcı", key: "staffName", width: 22 },
+    { header: "Hekim", key: "staffName", width: 22 },
     { header: "Sebep", key: "reason", width: 28 },
     { header: "Durum", key: "status", width: 16 },
   ]

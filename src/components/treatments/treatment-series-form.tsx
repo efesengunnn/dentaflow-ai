@@ -58,7 +58,7 @@ function TreatmentSeriesForm({ patientId, onSuccess }: TreatmentSeriesFormProps)
           control={form.control}
           name="treatmentType"
           label="Tedavi Türü"
-          render={({ field }) => <Input {...field} placeholder="Örn. Lazer Epilasyon" />}
+          render={({ field }) => <Input {...field} placeholder="Örn. Kanal tedavisi" />}
         />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField

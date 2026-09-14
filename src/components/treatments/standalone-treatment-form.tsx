@@ -105,7 +105,7 @@ function StandaloneTreatmentForm({
           control={form.control}
           name="treatmentType"
           label="Tedavi Türü"
-          render={({ field }) => <Input {...field} placeholder="Örn. Botoks" />}
+          render={({ field }) => <Input {...field} placeholder="Örn. Dolgu" />}
         />
         <FormField
           control={form.control}

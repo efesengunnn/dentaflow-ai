@@ -12,7 +12,7 @@ export default async function RolesSettingsPage() {
   if (staffMember.role !== "owner") {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Roller" description="Owner, Doktor, Sekreter ve Güzellik Uzmanı rollerinin yetkilerini görüntüleyin." />
+        <PageHeader title="Roller" description="Klinik Sahibi, Diş Hekimi, Sekreter ve Klinik Personeli rollerinin yetkilerini görüntüleyin." />
         <p className="text-muted-foreground text-sm">Bu sayfayı yalnızca klinik sahibi kullanabilir.</p>
       </div>
     )

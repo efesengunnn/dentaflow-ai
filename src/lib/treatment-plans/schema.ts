@@ -16,7 +16,7 @@ const TREATMENT_PAYMENT_CORRECTION_TYPE_VALUES = ["refund", "adjustment"] as con
 
 /** One line item within a Tedavi Planı wizard submission — one provider, one treatment, a session count and optional price. */
 export const treatmentPlanItemInputSchema = z.object({
-  providerId: z.string().min(1, "Sağlayıcı seçin."),
+  providerId: z.string().min(1, "Hekim seçin."),
   treatmentName: z.string().trim().min(1, "Tedavi adını girin.").max(120, "Tedavi adı 120 karakteri geçemez."),
   catalogItemId: z.string().optional(),
   sessionCount: z.number().int().min(1, "En az 1 seans olmalı.").max(999, "Geçerli bir seans sayısı girin."),
@@ -48,7 +48,7 @@ export const treatmentPlanFormDefaults: TreatmentPlanFormValues = {
 /** "Kalemi Düzenle" — revising an existing `treatment_plan_items` row. Every structural change (session count, provider, price) increments `revision_no` in the Server Action, never here. */
 export const reviseTreatmentPlanItemSchema = z.object({
   itemId: z.string().min(1),
-  providerId: z.string().min(1, "Sağlayıcı seçin."),
+  providerId: z.string().min(1, "Hekim seçin."),
   treatmentName: z.string().trim().min(1, "Tedavi adını girin.").max(120, "Tedavi adı 120 karakteri geçemez."),
   sessionCount: z.number().int().min(1, "En az 1 seans olmalı.").max(999, "Geçerli bir seans sayısı girin."),
   unitPrice: z.number().min(0, "Fiyat negatif olamaz.").optional(),

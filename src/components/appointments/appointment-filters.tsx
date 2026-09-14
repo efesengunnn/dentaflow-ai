@@ -53,10 +53,10 @@ function AppointmentFilters({ staffOptions }: AppointmentFiltersProps) {
             onValueChange={(value) => updateParams({ staffId: value === "all" ? null : value })}
           >
             <SelectTrigger size="sm" className="w-[168px]">
-              <SelectValue placeholder="Tüm Sağlayıcılar" />
+              <SelectValue placeholder="Tüm Hekimler" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tüm Sağlayıcılar</SelectItem>
+              <SelectItem value="all">Tüm Hekimler</SelectItem>
               {staffOptions.map((staff) => (
                 <SelectItem key={staff.id} value={staff.id}>
                   {staff.fullName}

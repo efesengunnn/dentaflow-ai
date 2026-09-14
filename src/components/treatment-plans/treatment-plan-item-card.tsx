@@ -144,7 +144,7 @@ function TreatmentPlanItemCard({
             { label: "Fiyat", value: formatMoney(item.totalPrice, item.currency) },
             { label: "Kalan Seans", value: item.remainingSessions },
             ...(isOwner && item.providerShareAmount != null
-              ? [{ label: "Sağlayıcı Payı", value: formatMoney(item.providerShareAmount, item.currency) }]
+              ? [{ label: "Hekim Payı", value: formatMoney(item.providerShareAmount, item.currency) }]
               : []),
           ]}
         />

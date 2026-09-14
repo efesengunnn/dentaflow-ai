@@ -77,7 +77,7 @@ export default async function PackageDetailPage({ params }: PackageDetailPagePro
           const subtotal = providerItems.reduce((sum, item) => sum + (item.totalPrice ?? 0), 0)
           return (
             <div key={providerId} className="flex flex-col gap-3 rounded-xl border border-border p-4">
-              <p className="font-semibold">{providerItems[0]?.providerName ?? "Sağlayıcı"}</p>
+              <p className="font-semibold">{providerItems[0]?.providerName ?? "Hekim"}</p>
               <div className="flex flex-col gap-3">
                 {providerItems.map((item) => (
                   <div key={item.id} className="flex flex-col gap-1.5 border-t pt-3 first:border-t-0 first:pt-0">

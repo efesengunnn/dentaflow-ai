@@ -15,7 +15,7 @@ export async function GET() {
   const sheet = workbook.addWorksheet("Randevular")
   sheet.columns = [
     { header: "Hasta Telefon", key: "patientPhone", width: 18 },
-    { header: "Sağlayıcı", key: "staffName", width: 22 },
+    { header: "Hekim", key: "staffName", width: 22 },
     { header: "Tarih", key: "date", width: 14 },
     { header: "Saat", key: "time", width: 10 },
     { header: "Sebep", key: "reason", width: 28 },
@@ -27,7 +27,7 @@ export async function GET() {
     staffName: "Dr. Ayşe Yılmaz",
     date: "22.07.2026",
     time: "14:30",
-    reason: "Botoks konsültasyonu",
+    reason: "Kontrol",
     status: APPOINTMENT_STATUS_LABELS.scheduled,
   })
   sheet.getRow(2).font = { italic: true, color: { argb: "FF888888" } }

@@ -67,7 +67,7 @@ export const mainNav: NavEntry[] = [
   { title: "Panel", href: "/dashboard", icon: LayoutDashboard },
   { title: "Hastalar", href: "/patients", icon: UserRound },
   { title: "Randevular", href: "/appointments", icon: CalendarDays },
-  { title: "Paketler", href: "/packages", icon: Package, restrictedTo: ["owner"] },
+  { title: "Tedavi Planları", href: "/packages", icon: Package, restrictedTo: ["owner"] },
   { title: "Personel", href: "/staff", icon: Users, restrictedTo: ["owner", "secretary"] },
   { title: "Ayarlar", href: "/settings", icon: Settings, restrictedTo: ["owner", "secretary"] },
 ];
@@ -122,7 +122,7 @@ function resolveLinkSegment(
       return [
         { title: link.title, href: link.href },
         { title: dynamicLabel ?? "Detay", href: `${link.href}/${subPageMatch[1]}` },
-        { title: "Paket / Tedavi Tanımla" },
+        { title: "Tedavi Planı Oluştur" },
       ];
     }
     const trailingTitle = dynamicLabel ?? "Detay";

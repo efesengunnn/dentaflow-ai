@@ -25,7 +25,7 @@ function PackageFilters() {
             <SelectValue placeholder="Durum" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tüm Paketler</SelectItem>
+            <SelectItem value="all">Tüm Planlar</SelectItem>
             {TREATMENT_PLAN_STATUS_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}

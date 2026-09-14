@@ -267,7 +267,7 @@ function PatientForm({
                     control={form.control}
                     name="treatmentType"
                     label={catalog.length > 0 ? "İşlem (elle yazılan, opsiyonel)" : "İşlem (opsiyonel)"}
-                    render={({ field }) => <Input {...field} placeholder="Örn. Botoks" />}
+                    render={({ field }) => <Input {...field} placeholder="Örn. Dolgu" />}
                   />
                 )}
                 <div className="flex items-end gap-2">

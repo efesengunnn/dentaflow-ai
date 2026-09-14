@@ -51,7 +51,7 @@ function TreatmentPlanCommittedSummary({
           const subtotals = totalsByCurrency(providerItems)
           return (
             <div key={providerId} className="flex flex-col gap-1">
-              <p className="text-sm font-semibold">{providerNameById[providerId] ?? "Sağlayıcı"}</p>
+              <p className="text-sm font-semibold">{providerNameById[providerId] ?? "Hekim"}</p>
               {providerItems.map((item, index) => (
                 <div key={`${item.treatmentName}-${index}`} className="flex items-center justify-between gap-3 pl-3 text-sm">
                   <span className="min-w-0 truncate text-muted-foreground">

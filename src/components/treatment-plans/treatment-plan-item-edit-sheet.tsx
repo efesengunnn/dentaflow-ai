@@ -105,7 +105,7 @@ function TreatmentPlanItemEditSheet({
 
         <div className="flex flex-col gap-4 px-4 pb-4">
           <Field>
-            <FieldLabel htmlFor="edit-item-provider">Sağlayıcı</FieldLabel>
+            <FieldLabel htmlFor="edit-item-provider">Hekim</FieldLabel>
             <Select value={providerId} onValueChange={setProviderId}>
               <SelectTrigger id="edit-item-provider" className="w-full">
                 <SelectValue />

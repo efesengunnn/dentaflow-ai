@@ -26,7 +26,7 @@ function TreatmentPlanProviderStep({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h3 className="text-base font-medium">Sağlayıcı Seç</h3>
+        <h3 className="text-base font-medium">Hekim Seç</h3>
         <p className="text-sm text-muted-foreground">Bu plandaki ilk tedaviyi kim uygulayacak?</p>
       </div>
 

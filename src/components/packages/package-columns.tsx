@@ -20,7 +20,7 @@ const packageColumns: ColumnDef<TreatmentPlanListRow>[] = [
   },
   {
     accessorKey: "planName",
-    header: "Paket",
+    header: "Tedavi Planı",
     cell: ({ row }) => <span className="text-muted-foreground text-sm">{row.original.planName}</span>,
   },
   {
