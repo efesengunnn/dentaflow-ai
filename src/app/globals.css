@@ -220,13 +220,19 @@
    [data-print-region] is present, print ONLY that region: hide everything via
    visibility, re-show the region, and float it to the page origin. Scoped with
    :has() so pages without a print region (e.g. Paketler) keep the chrome-only
-   rule above. */
+   rule above.
+
+   The re-show selectors must be prefixed with `body:has([data-print-region])`
+   too: `:has()` lends the hide rule (0,1,1) specificity, so a bare
+   `[data-print-region]` (0,1,0) loses to it even under !important and the
+   report stays hidden — an all-blank print. Matching the prefix raises the
+   re-show rules to (0,2,1) so they win. */
 @media print {
   body:has([data-print-region]) * {
     visibility: hidden !important;
   }
-  [data-print-region],
-  [data-print-region] * {
+  body:has([data-print-region]) [data-print-region],
+  body:has([data-print-region]) [data-print-region] * {
     visibility: visible !important;
   }
   [data-print-region] {
