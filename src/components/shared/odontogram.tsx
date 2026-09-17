@@ -37,24 +37,29 @@ import { cn } from "@/lib/utils"
 function ToothGlyph({ selected, flip }: { selected: boolean; flip: boolean }) {
   return (
     <svg
-      viewBox="0 0 24 24"
+      viewBox="0 0 32 34"
       aria-hidden
       className={cn(
-        "h-8 w-[26px] shrink-0 transition-colors duration-150",
+        "h-9 w-8 shrink-0 transition-[fill,stroke,filter] duration-150",
         selected
-          ? "fill-primary stroke-primary drop-shadow-sm"
-          : "fill-background stroke-border group-hover:fill-primary/10 group-hover:stroke-primary/40",
+          ? "fill-primary stroke-primary drop-shadow-[0_1.5px_2px_rgb(0_0_0/0.20)]"
+          : "fill-muted stroke-muted-foreground/45 group-hover:fill-primary/15 group-hover:stroke-primary/55",
       )}
-      strokeWidth={1.5}
+      strokeWidth={1.75}
       strokeLinejoin="round"
     >
       {/* Mirror upper-jaw teeth in SVG user units (deterministic — a CSS
           scale transform-origin on the <svg> proved unreliable) so their
-          crowns point down toward the bite line. */}
-      <path
-        transform={flip ? "translate(0 24) scale(1 -1)" : undefined}
-        d="M12 2C8.5 2 5.5 4.2 5.5 8c0 2.2.6 3.9 1.1 5.9.45 1.8.5 3.8.75 5.7.22 1.7.45 3.4 1.35 3.4.92 0 1-1.7 1.2-3.5.18-1.5.3-2.8.85-2.8s.67 1.3.85 2.8c.2 1.8.28 3.5 1.2 3.5.9 0 1.13-1.7 1.35-3.4.25-1.9.3-3.9.75-5.7.5-2 1.1-3.7 1.1-5.9 0-3.8-3-6-6.5-6z"
-      />
+          crowns point down toward the bite line. Path + enamel sheen share the
+          group so the highlight flips with the crown. */}
+      <g transform={flip ? "translate(0 34) scale(1 -1)" : undefined}>
+        <path d="M16 3.5C11.6 3.5 7.5 5.2 7.5 10c0 3 .9 5.2 1.4 8 .5 2.8.3 6.5 1.1 10.5.4 2.1 2 2.3 2.6.3.8-2.8 1-7.3 3.4-7.3s2.6 4.5 3.4 7.3c.6 2 2.2 1.8 2.6-.3.8-4 .6-7.7 1.1-10.5.5-2.8 1.4-5 1.4-8 0-4.8-4.1-6.5-8.5-6.5z" />
+        {/* Enamel sheen — a soft highlight near the crown that lifts the
+            selected tooth from flat fill to a glossy, premium surface. */}
+        {selected && (
+          <ellipse cx="12.5" cy="9.5" rx="4" ry="2.3" transform="rotate(-22 12.5 9.5)" className="fill-white/35" stroke="none" />
+        )}
+      </g>
     </svg>
   )
 }
