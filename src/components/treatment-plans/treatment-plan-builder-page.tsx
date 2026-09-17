@@ -18,10 +18,12 @@ import { TreatmentPlanBuilder } from "./treatment-plan-builder"
  */
 function TreatmentPlanBuilderPage({
   patientId,
+  patientBirthDate,
   staffOptions,
   isOwner,
 }: {
   patientId: string
+  patientBirthDate?: string | null
   staffOptions: AssignableStaff[]
   isOwner: boolean
 }) {
@@ -30,6 +32,7 @@ function TreatmentPlanBuilderPage({
   return (
     <TreatmentPlanBuilder
       patientId={patientId}
+      patientBirthDate={patientBirthDate}
       staffOptions={staffOptions}
       isOwner={isOwner}
       onCreated={() => {

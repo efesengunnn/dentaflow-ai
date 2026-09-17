@@ -156,6 +156,7 @@ export async function createTreatmentPlan(values: TreatmentPlanFormValues): Prom
     total_price: item.unitPrice ?? null,
     currency: item.currency,
     control_date: item.controlDate || null,
+    tooth_numbers: item.toothNumbers && item.toothNumbers.length > 0 ? item.toothNumbers : null,
     created_by: staffMember.userId,
     updated_by: staffMember.userId,
   }))
@@ -253,6 +254,7 @@ export async function updateTreatmentPlanItem(
       session_count: parsed.data.sessionCount,
       unit_price: parsed.data.unitPrice ?? null,
       total_price: totalPrice,
+      tooth_numbers: parsed.data.toothNumbers && parsed.data.toothNumbers.length > 0 ? parsed.data.toothNumbers : null,
       revision_no: nextRevisionNo,
       updated_by: staffMember.userId,
     })

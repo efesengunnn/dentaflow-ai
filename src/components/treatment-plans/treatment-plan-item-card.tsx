@@ -23,6 +23,7 @@ import {
   type TreatmentPlanActor,
 } from "@/lib/treatment-plans/permissions"
 import { formatCurrency } from "@/lib/format/currency"
+import { formatToothList } from "@/lib/odontogram/fdi"
 import type { TreatmentPlanItemDetail, TreatmentSessionRow } from "@/lib/treatment-plans/queries"
 import { CompleteSessionSheet } from "./complete-session-sheet"
 import { SessionCorrectionSheet } from "./session-correction-sheet"
@@ -133,6 +134,11 @@ function TreatmentPlanItemCard({
           <TreatmentPlanStatusBadge status={item.status} />
         </div>
         <p className="text-sm text-muted-foreground">{item.providerName}</p>
+        {item.toothNumbers.length > 0 && (
+          <p className="text-sm text-muted-foreground">
+            Dişler: <span className="text-foreground tabular-nums">{formatToothList(item.toothNumbers)}</span>
+          </p>
+        )}
         <p className="text-sm text-muted-foreground">
           {item.completedSessions} / {item.sessionCount} Seans Tamamlandı
         </p>

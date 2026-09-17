@@ -3,12 +3,16 @@
 import { Plus, X } from "lucide-react"
 import { useMemo, useState } from "react"
 
-import { Checkbox } from "@/components/ui/checkbox"
+import { Odontogram } from "@/components/shared/odontogram"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SearchInput } from "@/components/ui/search-input"
 import { formatCurrency } from "@/lib/format/currency"
+import { formatToothList } from "@/lib/odontogram/fdi"
 import type { CatalogItem } from "@/lib/treatment-catalog/queries"
 import type { DraftTreatmentSelection } from "./treatment-plan-builder"
 
@@ -19,28 +23,73 @@ import type { DraftTreatmentSelection } from "./treatment-plan-builder"
  * `catalog` artık seçili sağlayıcıya özel, gerçek bir liste. Hiçbir
  * varsayılan seans sayısı önerilmez — seçilince her zaman 1 seansla başlar,
  * Adım 3'te elle değiştirilir (founder kararı).
+ *
+ * Sprint 33 — seçilen her tedavinin altında, tıklanınca açılan bir "Diş
+ * Şeması" (Odontogram) accordion'u yer alır (founder kararı: diş eşleştirme
+ * tam da tedavinin seçildiği ekranda, ayrı bir adım olmadan yapılır). Diş
+ * seçimi opsiyoneldir — tüm ağzı ilgilendiren tedavilerde boş bırakılır.
  */
+function ToothChartAccordion({
+  selection,
+  patientBirthDate,
+  onChangeToothNumbers,
+}: {
+  selection: DraftTreatmentSelection
+  patientBirthDate?: string | null
+  onChangeToothNumbers: (key: string, toothNumbers: number[]) => void
+}) {
+  return (
+    <Accordion type="single" collapsible className="border-border bg-muted/20 rounded-lg border px-3">
+      <AccordionItem value="teeth" className="border-b-0">
+        <AccordionTrigger className="py-2.5 hover:no-underline">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-normal">Diş Şeması</span>
+            {selection.toothNumbers.length > 0 ? (
+              <Badge variant="secondary" className="tabular-nums">
+                {formatToothList(selection.toothNumbers)}
+              </Badge>
+            ) : (
+              <span className="text-muted-foreground text-xs">Tüm ağız</span>
+            )}
+          </span>
+        </AccordionTrigger>
+        <AccordionContent>
+          <Odontogram
+            value={selection.toothNumbers}
+            onChange={(numbers) => onChangeToothNumbers(selection.key, numbers)}
+            birthDate={patientBirthDate}
+          />
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  )
+}
+
 function TreatmentPlanTreatmentsStep({
   providerName,
+  patientBirthDate,
   catalog,
   selections,
   onToggleCatalogItem,
   onAddCustom,
   onRemoveCustom,
+  onChangeToothNumbers,
 }: {
   providerName: string
+  patientBirthDate?: string | null
   catalog: CatalogItem[]
   selections: DraftTreatmentSelection[]
   onToggleCatalogItem: (treatmentName: string, currency: string, defaultPrice: number | null) => void
   onAddCustom: (name: string) => void
   onRemoveCustom: (key: string) => void
+  onChangeToothNumbers: (key: string, toothNumbers: number[]) => void
 }) {
   const [search, setSearch] = useState("")
   const [customOpen, setCustomOpen] = useState(false)
   const [customName, setCustomName] = useState("")
 
-  const selectedNames = useMemo(
-    () => new Set(selections.filter((row) => !row.isCustom).map((row) => row.treatmentName)),
+  const selectionByName = useMemo(
+    () => new Map(selections.filter((row) => !row.isCustom).map((row) => [row.treatmentName, row])),
     [selections],
   )
   const customSelections = selections.filter((row) => row.isCustom)
@@ -61,7 +110,10 @@ function TreatmentPlanTreatmentsStep({
     <div className="flex flex-col gap-4">
       <div>
         <h3 className="text-base font-medium">Tedavileri Seç</h3>
-        <p className="text-sm text-muted-foreground">{providerName} bu planda hangi işlemleri uygulayacak?</p>
+        <p className="text-muted-foreground text-sm">
+          {providerName} bu planda hangi işlemleri uygulayacak? Seçtiğiniz tedavinin altından diş şemasını açıp
+          uygulanacak dişleri işaretleyebilirsiniz.
+        </p>
       </div>
 
       <SearchInput
@@ -71,50 +123,70 @@ function TreatmentPlanTreatmentsStep({
         onClear={() => setSearch("")}
       />
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1.5">
         {catalog.length === 0 ? (
-          <p className="py-2 text-sm text-muted-foreground">
+          <p className="text-muted-foreground py-2 text-sm">
             {providerName} için Ayarlar&apos;da tanımlı bir tedavi kataloğu yok. Aşağıdan &quot;Özel tedavi ekle&quot;
             ile devam edebilirsiniz.
           </p>
         ) : filteredCatalog.length === 0 ? (
-          <p className="py-2 text-sm text-muted-foreground">Eşleşen tedavi bulunamadı.</p>
+          <p className="text-muted-foreground py-2 text-sm">Eşleşen tedavi bulunamadı.</p>
         ) : (
           filteredCatalog.map((item) => {
-            const checked = selectedNames.has(item.treatmentType)
+            const selection = selectionByName.get(item.treatmentType)
             return (
-              <Label
-                key={item.id}
-                className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-2 transition-colors duration-150 hover:bg-muted/40 has-[[data-checked]]:bg-primary/5"
-              >
-                <span className="flex items-center gap-3">
-                  <Checkbox checked={checked} onCheckedChange={() => onToggleCatalogItem(item.treatmentType, item.currency, item.defaultPrice)} />
-                  <span className="font-medium">{item.treatmentType}</span>
-                </span>
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {item.defaultPrice !== null ? formatCurrency(item.defaultPrice, item.currency) : item.currency}
-                </span>
-              </Label>
+              <div key={item.id} className="flex flex-col gap-1.5">
+                <Label className="hover:bg-muted/40 has-[[data-checked]]:bg-primary/5 flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-2 transition-colors duration-150">
+                  <span className="flex items-center gap-3">
+                    <Checkbox
+                      checked={selection !== undefined}
+                      onCheckedChange={() => onToggleCatalogItem(item.treatmentType, item.currency, item.defaultPrice)}
+                    />
+                    <span className="font-medium">{item.treatmentType}</span>
+                  </span>
+                  <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                    {item.defaultPrice !== null ? formatCurrency(item.defaultPrice, item.currency) : item.currency}
+                  </span>
+                </Label>
+                {selection && (
+                  <div className="pl-2.5">
+                    <ToothChartAccordion
+                      selection={selection}
+                      patientBirthDate={patientBirthDate}
+                      onChangeToothNumbers={onChangeToothNumbers}
+                    />
+                  </div>
+                )}
+              </div>
             )
           })
         )}
       </div>
 
       {customSelections.length > 0 && (
-        <div className="flex flex-col gap-1 border-t pt-3">
-          <p className="text-xs font-medium text-muted-foreground">Özel Tedaviler</p>
+        <div className="flex flex-col gap-1.5 border-t pt-3">
+          <p className="text-muted-foreground text-xs font-medium">Özel Tedaviler</p>
           {customSelections.map((row) => (
-            <div key={row.key} className="flex min-h-11 items-center justify-between gap-3 rounded-lg px-2.5 py-2">
-              <span className="font-medium">{row.treatmentName}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Özel tedaviyi kaldır"
-                onClick={() => onRemoveCustom(row.key)}
-              >
-                <X className="size-4" />
-              </Button>
+            <div key={row.key} className="flex flex-col gap-1.5">
+              <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg px-2.5 py-2">
+                <span className="font-medium">{row.treatmentName}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Özel tedaviyi kaldır"
+                  onClick={() => onRemoveCustom(row.key)}
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
+              <div className="pl-2.5">
+                <ToothChartAccordion
+                  selection={row}
+                  patientBirthDate={patientBirthDate}
+                  onChangeToothNumbers={onChangeToothNumbers}
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -124,13 +196,13 @@ function TreatmentPlanTreatmentsStep({
         <button
           type="button"
           onClick={() => setCustomOpen(true)}
-          className="flex min-h-11 items-center gap-2 self-start text-sm font-medium text-primary transition-opacity duration-150 hover:opacity-80"
+          className="text-primary flex min-h-11 items-center gap-2 self-start text-sm font-medium transition-opacity duration-150 hover:opacity-80"
         >
           <Plus className="size-4" />
           Özel tedavi ekle
         </button>
       ) : (
-        <div className="flex flex-col gap-2 rounded-xl border border-border p-3.5">
+        <div className="border-border flex flex-col gap-2 rounded-xl border p-3.5">
           <Input
             autoFocus
             placeholder="Tedavi adı"

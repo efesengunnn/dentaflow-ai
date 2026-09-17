@@ -1,6 +1,7 @@
 "use client"
 
 import { currencySymbol } from "@/lib/format/currency"
+import { formatToothList } from "@/lib/odontogram/fdi"
 import type { TreatmentPlanItemInput } from "@/lib/treatment-plans/schema"
 
 function formatMoney(amount: number, currency: string): string {
@@ -56,6 +57,9 @@ function TreatmentPlanCommittedSummary({
                 <div key={`${item.treatmentName}-${index}`} className="flex items-center justify-between gap-3 pl-3 text-sm">
                   <span className="min-w-0 truncate text-muted-foreground">
                     {item.treatmentName} <span>· {item.sessionCount} seans</span>
+                    {item.toothNumbers && item.toothNumbers.length > 0 && (
+                      <span className="tabular-nums"> · Diş {formatToothList(item.toothNumbers)}</span>
+                    )}
                   </span>
                   <span className="shrink-0 tabular-nums">{formatMoney(item.unitPrice ?? 0, item.currency)}</span>
                 </div>

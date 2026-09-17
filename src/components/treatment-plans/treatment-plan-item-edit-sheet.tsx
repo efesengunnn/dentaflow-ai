@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
 
+import { Odontogram } from "@/components/shared/odontogram"
 import { Button } from "@/components/ui/button"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -50,6 +51,7 @@ function TreatmentPlanItemEditSheet({
   const [providerId, setProviderId] = useState(item.providerId)
   const [sessionCount, setSessionCount] = useState(item.sessionCount)
   const [unitPrice, setUnitPrice] = useState<number | undefined>(item.unitPrice ?? undefined)
+  const [toothNumbers, setToothNumbers] = useState<number[]>(item.toothNumbers)
   const [sessionCountError, setSessionCountError] = useState<string | null>(null)
 
   // Sheet her açılışta (kapalıyken vazgeçilmiş bir taslak varsa dahi) veya
@@ -64,6 +66,7 @@ function TreatmentPlanItemEditSheet({
       setProviderId(item.providerId)
       setSessionCount(item.sessionCount)
       setUnitPrice(item.unitPrice ?? undefined)
+      setToothNumbers(item.toothNumbers)
       setSessionCountError(null)
     }
   }
@@ -84,6 +87,7 @@ function TreatmentPlanItemEditSheet({
         treatmentName: item.treatmentName,
         sessionCount,
         unitPrice,
+        toothNumbers,
       })
       if (!result?.success) {
         toast.error(result?.error ?? "Kalem güncellenemedi.")
@@ -157,6 +161,11 @@ function TreatmentPlanItemEditSheet({
           <Field>
             <FieldLabel htmlFor="edit-item-unit-price">Birim Fiyat</FieldLabel>
             <MoneyInput id="edit-item-unit-price" value={unitPrice} onChange={setUnitPrice} placeholder="Belirlenmedi" />
+          </Field>
+
+          <Field>
+            <FieldLabel>Dişler</FieldLabel>
+            <Odontogram value={toothNumbers} onChange={setToothNumbers} />
           </Field>
         </div>
 
