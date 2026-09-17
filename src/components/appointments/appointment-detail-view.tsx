@@ -43,7 +43,7 @@ function AppointmentDetailView({
   patientOptions,
   staffOptions,
   seriesDetail,
-  linkedTreatmentPlanItem,
+  linkedTreatmentPlanItems,
   treatmentPlanActor,
   canManageTreatments,
   canManagePayments,
@@ -54,8 +54,8 @@ function AppointmentDetailView({
   staffOptions: AssignableStaff[]
   /** The full series behind `appointment.linkedTreatment`, only fetched when one exists — feeds the quick actions below. */
   seriesDetail: TreatmentSeriesDetail | null
-  /** Sprint 28D — the new-model sibling of `seriesDetail`. An appointment has at most one of the two, never both. */
-  linkedTreatmentPlanItem: AppointmentLinkedTreatmentPlanItem | null
+  /** Sprint 34 — the new-model treatments this appointment covers (one visit can include several). Legacy series live separately in `seriesDetail`. */
+  linkedTreatmentPlanItems: AppointmentLinkedTreatmentPlanItem[]
   treatmentPlanActor: TreatmentPlanActor
   canManageTreatments: boolean
   canManagePayments: boolean
@@ -76,31 +76,28 @@ function AppointmentDetailView({
   const showCompleteSessionAction = appointment.status !== "completed" && linkedSessionIncomplete && seriesActive
   const showCompletionSuggestion = appointment.status === "completed" && linkedSessionIncomplete && seriesActive
 
-  const showTedaviBaslat = !linkedTreatment && canManageTreatments
+  const showTedaviBaslat = !linkedTreatment && linkedTreatmentPlanItems.length === 0 && canManageTreatments
   const showTahsilatYap =
     seriesDetail !== null && canManagePayments && seriesDetail.remainingBalance !== null && seriesDetail.remainingBalance > 0
 
-  // Sprint 28D — new-model sibling of `showCompleteSessionAction` above.
-  // `hasCompletedSessionForAppointment` mirrors the same idempotency check
-  // `completeTreatmentSession` re-verifies server-side, so the button never
-  // offers an action the action itself would reject.
-  const showPlanCompleteSessionAction =
-    linkedTreatmentPlanItem !== null &&
-    !linkedTreatmentPlanItem.hasCompletedSessionForAppointment &&
-    linkedTreatmentPlanItem.remainingSessions > 0 &&
-    linkedTreatmentPlanItem.itemStatus === "active" &&
-    canCompleteSession(treatmentPlanActor)
+  // Sprint 34 — an appointment can cover several plan items. Each eligible item
+  // gets its own "Seansı Tamamla"; `canCompleteEach` mirrors the same
+  // idempotency check `completeTreatmentSession` re-verifies server-side.
+  const canCompleteSessions = canCompleteSession(treatmentPlanActor) && appointment.status !== "completed"
+  const completableItems = canCompleteSessions
+    ? linkedTreatmentPlanItems.filter(
+        (item) => !item.hasCompletedSessionForAppointment && item.remainingSessions > 0 && item.itemStatus === "active",
+      )
+    : []
 
-  // Sprint 31 — new-model sibling of `showTahsilatYap` (legacy series) above.
-  // The appointment panel previously offered payment only for the legacy
-  // series model; a standalone/plan-linked appointment showed a price but no
-  // way to collect against it (founder bug report 2026-09-11). A plan can owe
-  // in more than one currency, so this is true when *any* currency has a
-  // remaining balance.
+  // Payment ledger is plan-level; all items on one appointment share a provider
+  // and (in the common case) a plan, so payment is offered against the first
+  // linked item's plan. A plan can owe in more than one currency.
+  const primaryPlanItem = linkedTreatmentPlanItems[0] ?? null
   const showPlanTahsilat =
-    linkedTreatmentPlanItem !== null &&
+    primaryPlanItem !== null &&
     canManagePayments &&
-    linkedTreatmentPlanItem.currencyTotals.some((entry) => entry.remaining !== null && entry.remaining > 0)
+    primaryPlanItem.currencyTotals.some((entry) => entry.remaining !== null && entry.remaining > 0)
 
   return (
     <PageContainer>
@@ -133,26 +130,33 @@ function AppointmentDetailView({
         <div className="flex flex-col gap-4">
           <AppointmentInfoPanel appointment={appointment} />
 
-          {linkedTreatmentPlanItem && (
+          {primaryPlanItem && (
             <Card size="sm">
               <CardHeader>
-                <CardTitle>Tedavi Planı</CardTitle>
+                <CardTitle>{linkedTreatmentPlanItems.length > 1 ? "Tedaviler" : "Tedavi Planı"}</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-2">
-                <div className="flex items-center gap-x-4 gap-y-1">
-                  <span className="min-w-0 flex-1 truncate font-medium">{linkedTreatmentPlanItem.treatmentName}</span>
-                  {linkedTreatmentPlanItem.hasCompletedSessionForAppointment && (
-                    <Badge variant="success">Bu randevu için tamamlandı</Badge>
-                  )}
+                <div className="flex flex-col gap-3">
+                  {linkedTreatmentPlanItems.map((item) => (
+                    <div
+                      key={item.treatmentPlanItemId}
+                      className="flex flex-col gap-1 [&:not(:first-child)]:border-t [&:not(:first-child)]:pt-3"
+                    >
+                      <div className="flex items-center gap-x-4 gap-y-1">
+                        <span className="min-w-0 flex-1 truncate font-medium">{item.treatmentName}</span>
+                        {item.hasCompletedSessionForAppointment && (
+                          <Badge variant="success">Bu randevu için tamamlandı</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {item.providerName} · {item.completedSessions} / {item.sessionCount} Seans Tamamlandı
+                      </p>
+                    </div>
+                  ))}
                 </div>
-                <p className="text-sm text-muted-foreground">{linkedTreatmentPlanItem.planName}</p>
-                <p className="text-sm text-muted-foreground">{linkedTreatmentPlanItem.providerName}</p>
-                <p className="text-sm text-muted-foreground">
-                  {linkedTreatmentPlanItem.completedSessions} / {linkedTreatmentPlanItem.sessionCount} Seans Tamamlandı
-                </p>
 
                 <div className="mt-1 flex flex-col gap-2">
-                  {linkedTreatmentPlanItem.currencyTotals.map((entry) => (
+                  {primaryPlanItem.currencyTotals.map((entry) => (
                     <div key={entry.currency} className="grid grid-cols-3 gap-2 rounded-xl border bg-muted/20 p-3">
                       <div>
                         <p className="text-xs text-muted-foreground">Toplam</p>
@@ -221,22 +225,25 @@ function AppointmentDetailView({
                   label={`${linkedTreatment.sessionNumber}. Seansı Tamamla`}
                 />
               )}
-              {showPlanCompleteSessionAction && linkedTreatmentPlanItem && (
+              {completableItems.map((item) => (
                 <CompleteSessionSheet
-                  treatmentPlanItemId={linkedTreatmentPlanItem.treatmentPlanItemId}
-                  treatmentName={linkedTreatmentPlanItem.treatmentName}
+                  key={item.treatmentPlanItemId}
+                  treatmentPlanItemId={item.treatmentPlanItemId}
+                  treatmentName={item.treatmentName}
                   appointmentId={appointment.id}
-                  nextSessionNumber={linkedTreatmentPlanItem.completedSessions + 1}
+                  nextSessionNumber={item.completedSessions + 1}
                   staffOptions={staffOptions}
-                  defaultStaffId={treatmentPlanActor.staffId || linkedTreatmentPlanItem.providerId}
+                  defaultStaffId={treatmentPlanActor.staffId || item.providerId}
                   trigger={
                     <Button size="sm" variant="success">
                       <CheckCircle2 />
-                      {linkedTreatmentPlanItem.completedSessions + 1}. Seansı Tamamla
+                      {linkedTreatmentPlanItems.length > 1
+                        ? `${item.treatmentName}: Seansı Tamamla`
+                        : `${item.completedSessions + 1}. Seansı Tamamla`}
                     </Button>
                   }
                 />
-              )}
+              ))}
               {showTahsilatYap && seriesDetail && (
                 <AddPaymentSheet
                   seriesId={seriesDetail.id}
@@ -249,10 +256,10 @@ function AppointmentDetailView({
                   }
                 />
               )}
-              {showPlanTahsilat && linkedTreatmentPlanItem && (
+              {showPlanTahsilat && primaryPlanItem && (
                 <AppointmentPlanPaymentButton
-                  treatmentPlanId={linkedTreatmentPlanItem.treatmentPlanId}
-                  currencyBalances={linkedTreatmentPlanItem.currencyTotals.map((entry) => ({
+                  treatmentPlanId={primaryPlanItem.treatmentPlanId}
+                  currencyBalances={primaryPlanItem.currencyTotals.map((entry) => ({
                     currency: entry.currency,
                     remaining: entry.remaining,
                   }))}

@@ -41,6 +41,14 @@ export const appointmentFormSchema = z
     note: z.string().trim().max(2000, "Not 2000 karakteri geçemez.").optional(),
     treatmentPlanId: z.string().optional(),
     treatmentPlanItemId: z.string().optional(),
+    /**
+     * Sprint 34 — one appointment can cover multiple treatments from the
+     * defined plan (e.g. Dolgu + Kanal at the same 16:00 slot). The package
+     * step writes every chosen item here; `treatmentPlanId`/`treatmentPlanItemId`
+     * above mirror the FIRST one for backward-compatible readers. Empty for the
+     * "Tek Seans / Tek İşlem" and "no treatment" shapes.
+     */
+    treatmentPlanItemIds: z.array(z.string()).optional(),
     /** "Tek Seans / Tek İşlem" — set together with `standalonePrice`, never alongside `treatmentPlanId`. */
     standaloneTreatmentName: z.string().trim().max(120, "İşlem adı 120 karakteri geçemez.").optional(),
     standalonePrice: z.number().min(0, "Fiyat negatif olamaz.").optional(),
@@ -70,6 +78,7 @@ export const appointmentFormDefaults: AppointmentFormValues = {
   note: "",
   treatmentPlanId: "",
   treatmentPlanItemId: "",
+  treatmentPlanItemIds: [],
   standaloneTreatmentName: "",
   standalonePrice: undefined,
   standaloneCurrency: "TRY",

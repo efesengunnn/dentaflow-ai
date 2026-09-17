@@ -102,7 +102,7 @@ function TreatmentPlanItemEditSheet({
 
   return (
     <Sheet open={open} onOpenChange={(next) => !isPending && onOpenChange(next)}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-4xl">
         <SheetHeader>
           <SheetTitle>Kalemi Düzenle · Rev. {item.revisionNo}</SheetTitle>
         </SheetHeader>

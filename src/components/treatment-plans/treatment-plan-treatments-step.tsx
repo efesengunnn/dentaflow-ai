@@ -39,9 +39,9 @@ function ToothChartAccordion({
   onChangeToothNumbers: (key: string, toothNumbers: number[]) => void
 }) {
   return (
-    <Accordion type="single" collapsible className="border-border bg-muted/20 rounded-lg border px-3">
+    <Accordion type="single" collapsible className="rounded-lg">
       <AccordionItem value="teeth" className="border-b-0">
-        <AccordionTrigger className="py-2.5 hover:no-underline">
+        <AccordionTrigger className="py-2 hover:no-underline">
           <span className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-normal">Diş Şeması</span>
             {selection.toothNumbers.length > 0 ? (

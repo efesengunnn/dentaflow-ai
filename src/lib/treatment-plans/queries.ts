@@ -836,25 +836,52 @@ export type AppointmentLinkedTreatmentPlanItem = {
   currencyTotals: PlanCurrencyTotal[]
 }
 
-export async function getAppointmentLinkedTreatmentPlanItem(
+/**
+ * Sprint 34 — an appointment can cover multiple treatments. Item ids come from
+ * the `appointment_treatment_plan_items` junction; for appointments booked
+ * before this table existed, fall back to the legacy single
+ * `appointments.treatment_plan_item_id`. Each item is built into the same
+ * `AppointmentLinkedTreatmentPlanItem` shape the detail view already renders.
+ */
+export async function getAppointmentLinkedTreatmentPlanItems(
   appointmentId: string,
-): Promise<AppointmentLinkedTreatmentPlanItem | null> {
+): Promise<AppointmentLinkedTreatmentPlanItem[]> {
   const supabase = await createClient()
 
-  const { data: appointment, error: appointmentError } = await supabase
-    .from("appointments")
-    .select("treatment_plan_id, treatment_plan_item_id")
-    .eq("id", appointmentId)
-    .maybeSingle()
+  const { data: junctionRows } = await supabase
+    .from("appointment_treatment_plan_items")
+    .select("treatment_plan_item_id")
+    .eq("appointment_id", appointmentId)
 
-  if (appointmentError || !appointment?.treatment_plan_id || !appointment.treatment_plan_item_id) return null
+  let itemIds = (junctionRows ?? []).map((row) => row.treatment_plan_item_id)
+
+  if (itemIds.length === 0) {
+    const { data: appointment } = await supabase
+      .from("appointments")
+      .select("treatment_plan_item_id")
+      .eq("id", appointmentId)
+      .maybeSingle()
+    if (appointment?.treatment_plan_item_id) itemIds = [appointment.treatment_plan_item_id]
+  }
+
+  if (itemIds.length === 0) return []
+
+  const built = await Promise.all(itemIds.map((id) => buildLinkedItemDetail(appointmentId, id)))
+  return built.filter((row): row is AppointmentLinkedTreatmentPlanItem => row !== null)
+}
+
+async function buildLinkedItemDetail(
+  appointmentId: string,
+  itemId: string,
+): Promise<AppointmentLinkedTreatmentPlanItem | null> {
+  const supabase = await createClient()
 
   const { data: item, error: itemError } = await supabase
     .from("treatment_plan_items")
     .select(
       "id, treatment_plan_id, provider_id, treatment_name, session_count, status, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name), plan:treatment_plans!treatment_plan_items_treatment_plan_id_fkey(plan_name, currency)",
     )
-    .eq("id", appointment.treatment_plan_item_id)
+    .eq("id", itemId)
     .is("deleted_at", null)
     .maybeSingle()
 

@@ -89,6 +89,55 @@ export type Database = {
           },
         ]
       }
+      appointment_treatment_plan_items: {
+        Row: {
+          appointment_id: string
+          clinic_id: string
+          created_at: string
+          created_by: string
+          id: string
+          treatment_plan_item_id: string
+        }
+        Insert: {
+          appointment_id: string
+          clinic_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          treatment_plan_item_id: string
+        }
+        Update: {
+          appointment_id?: string
+          clinic_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          treatment_plan_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_treatment_plan_items_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_treatment_plan_items_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_treatment_plan_items_treatment_plan_item_id_fkey"
+            columns: ["treatment_plan_item_id"]
+            isOneToOne: false
+            referencedRelation: "treatment_plan_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointments: {
         Row: {
           clinic_id: string

@@ -7,7 +7,7 @@ import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
 import { getPatientOptions } from "@/lib/patients/queries"
 import { getAssignableStaff } from "@/lib/staff/queries"
 import type { TreatmentPlanActor } from "@/lib/treatment-plans/permissions"
-import { getAppointmentLinkedTreatmentPlanItem } from "@/lib/treatment-plans/queries"
+import { getAppointmentLinkedTreatmentPlanItems } from "@/lib/treatment-plans/queries"
 import { getTreatmentSeriesDetail } from "@/lib/treatments/queries"
 
 type AppointmentDetailPageProps = {
@@ -45,7 +45,7 @@ export default async function AppointmentDetailPage({ params, searchParams }: Ap
   // appointment has at most one of the two links (legacy series or new plan
   // item), never both, but both are fetched unconditionally since
   // `appointment.linkedTreatment` only ever reflects the legacy join.
-  const linkedTreatmentPlanItem = await getAppointmentLinkedTreatmentPlanItem(appointment.id)
+  const linkedTreatmentPlanItems = await getAppointmentLinkedTreatmentPlanItems(appointment.id)
   // Sprint 28D — UI affordance gating for "Seansı Tamamla" only (RLS + the
   // Server Action remain the actual security boundary); falls back to the
   // least-privileged clinical role when there's no session, same convention
@@ -65,7 +65,7 @@ export default async function AppointmentDetailPage({ params, searchParams }: Ap
         patientOptions={patientOptions}
         staffOptions={staffOptions}
         seriesDetail={seriesDetail}
-        linkedTreatmentPlanItem={linkedTreatmentPlanItem}
+        linkedTreatmentPlanItems={linkedTreatmentPlanItems}
         treatmentPlanActor={treatmentPlanActor}
         canManageTreatments={canManageTreatments}
         canManagePayments={canManagePayments}

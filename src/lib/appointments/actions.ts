@@ -79,8 +79,19 @@ export type CreateAppointmentResult =
 async function applyAppointmentTreatmentPlan(
   data: AppointmentFormValues,
   appointmentId: string,
+  clinicId: string,
+  createdBy: string,
 ): Promise<string | undefined> {
-  if (!data.treatmentPlanId || !data.treatmentPlanItemId) return undefined
+  // Sprint 34 — an appointment can cover multiple plan items. The package step
+  // fills `treatmentPlanItemIds`; the standalone hidden-plan flow only sets the
+  // single `treatmentPlanItemId`. Normalize both to one list.
+  const itemIds =
+    data.treatmentPlanItemIds && data.treatmentPlanItemIds.length > 0
+      ? data.treatmentPlanItemIds
+      : data.treatmentPlanItemId
+        ? [data.treatmentPlanItemId]
+        : []
+  if (itemIds.length === 0) return undefined
 
   const supabase = await createClient()
 
@@ -88,15 +99,34 @@ async function applyAppointmentTreatmentPlan(
   // sessions, but re-confirm here in case they were exhausted by another
   // booking in the meantime (see appointment-treatment-section.tsx).
   const remaining = await getRemainingSessionsForPatient(data.patientId)
-  const stillHasRemaining = remaining.some((row) => row.itemId === data.treatmentPlanItemId)
-  if (!stillHasRemaining) {
-    return "Seçilen kalemde artık kalan seans yok, plana bağlanamadı."
+  const byId = new Map(remaining.map((row) => [row.itemId, row]))
+  const validIds = itemIds.filter((id) => byId.has(id))
+  if (validIds.length === 0) {
+    return "Seçilen tedavilerde artık kalan seans yok, plana bağlanamadı."
   }
-  const { error } = await supabase
+
+  // Full set → junction; first valid item mirrors the legacy single columns so
+  // existing single-link readers keep working.
+  const { error: linkError } = await supabase.from("appointment_treatment_plan_items").insert(
+    validIds.map((id) => ({
+      clinic_id: clinicId,
+      appointment_id: appointmentId,
+      treatment_plan_item_id: id,
+      created_by: createdBy,
+    })),
+  )
+  if (linkError) return "Randevu tedavilere bağlanamadı."
+
+  const first = byId.get(validIds[0])!
+  const { error: updateError } = await supabase
     .from("appointments")
-    .update({ treatment_plan_id: data.treatmentPlanId, treatment_plan_item_id: data.treatmentPlanItemId })
+    .update({ treatment_plan_id: first.treatmentPlanId, treatment_plan_item_id: validIds[0] })
     .eq("id", appointmentId)
-  return error ? "Randevu tedavi planına bağlanamadı." : undefined
+  if (updateError) return "Randevu tedavi planına bağlanamadı."
+
+  return validIds.length < itemIds.length
+    ? "Bazı tedavilerde kalan seans yoktu; yalnızca uygun olanlar bağlandı."
+    : undefined
 }
 
 /**
@@ -228,7 +258,7 @@ export async function insertAppointment(values: AppointmentFormValues): Promise<
   }
   await supabase.from("appointment_activities").insert(activities)
 
-  const linkWarning = await applyAppointmentTreatmentPlan(effectiveData, appointment.id)
+  const linkWarning = await applyAppointmentTreatmentPlan(effectiveData, appointment.id, staffMember.clinicId, staffMember.userId)
 
   revalidatePath("/appointments")
   revalidatePath(`/patients/${effectiveData.patientId}`)

@@ -1,6 +1,6 @@
 "use client"
 
-import { Package, Plus, Sparkles, X } from "lucide-react"
+import { Check, Package, Plus, Sparkles, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import type { UseFormSetValue } from "react-hook-form"
 
@@ -61,10 +61,13 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
   const [open, setOpen] = useState(true)
   const [mode, setMode] = useState<Mode>("choice")
 
-  // C1 — Tanımlanmış Paket
+  // C1 — Tanımlanmış Paket. Sprint 34 — çoklu seçim: bir randevu (tek saat, tek
+  // hekim) paketten birden fazla tedaviyi kapsayabilir (örn. Dolgu + Kanal
+  // aynı 16:00'da). Seçim aynı hekimin kalemleriyle sınırlıdır — randevunun
+  // tek `staffId`/çakışma modeli korunur.
   const [remainingItems, setRemainingItems] = useState<RemainingSessionItem[]>([])
   const [loadedForPatientId, setLoadedForPatientId] = useState<string | null>(null)
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
 
   // C2 — Tek Seans / Tek İşlem
   const [singleProvider, setSingleProvider] = useState<AssignableStaff | null>(null)
@@ -80,9 +83,10 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
   const loading = open && mode === "package" && Boolean(patientId) && loadedForPatientId !== patientId
 
   function clearAllSelection() {
-    setSelectedItemId(null)
+    setSelectedItemIds([])
     setValue("treatmentPlanId", "")
     setValue("treatmentPlanItemId", "")
+    setValue("treatmentPlanItemIds", [])
     setValue("staffId", "")
     setValue("standaloneTreatmentName", "")
     setValue("standalonePrice", undefined)
@@ -90,11 +94,23 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
     setValue("controlDate", "")
   }
 
-  function selectItem(item: RemainingSessionItem) {
-    setSelectedItemId(item.itemId)
-    setValue("treatmentPlanId", item.treatmentPlanId)
-    setValue("treatmentPlanItemId", item.itemId)
-    setValue("staffId", item.providerId)
+  /** Sync selected item ids into the form. First item's plan/provider mirror the
+   *  legacy single columns + the appointment's `staffId`; all ids go to the array. */
+  function syncSelection(ids: string[], source: RemainingSessionItem[]) {
+    setSelectedItemIds(ids)
+    const first = source.find((row) => row.itemId === ids[0])
+    setValue("treatmentPlanItemIds", ids)
+    setValue("treatmentPlanItemId", first?.itemId ?? "")
+    setValue("treatmentPlanId", first?.treatmentPlanId ?? "")
+    setValue("staffId", first?.providerId ?? "")
+  }
+
+  function toggleItem(item: RemainingSessionItem) {
+    if (selectedItemIds.includes(item.itemId)) {
+      syncSelection(selectedItemIds.filter((id) => id !== item.itemId), remainingItems)
+    } else {
+      syncSelection([...selectedItemIds, item.itemId], remainingItems)
+    }
   }
 
   function loadRemainingItems(nextPatientId: string) {
@@ -103,12 +119,18 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
       if (cancelled) return
       setRemainingItems(rows)
       setLoadedForPatientId(nextPatientId)
-      if (rows.length === 1) selectItem(rows[0])
+      if (rows.length === 1) syncSelection([rows[0].itemId], rows)
     })
     return () => {
       cancelled = true
     }
   }
+
+  // The single provider this appointment is locked to once the first item is
+  // picked — other-provider items are then disabled (one appointment = one hekim).
+  const lockedProviderId = selectedItemIds.length
+    ? (remainingItems.find((row) => row.itemId === selectedItemIds[0])?.providerId ?? null)
+    : null
 
   useEffect(() => {
     if (!open || !patientId || loadedForPatientId === patientId) return
@@ -242,20 +264,37 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
             >
               ← Geri
             </button>
+            <p className="text-xs text-muted-foreground">
+              Bu randevuda uygulanacak tedavileri seçin — aynı saate birden fazla tedavi eklenebilir.
+            </p>
             {remainingItems.map((item) => {
-              const checked = item.itemId === selectedItemId
+              const checked = selectedItemIds.includes(item.itemId)
+              const disabled = !checked && lockedProviderId !== null && item.providerId !== lockedProviderId
               return (
                 <button
                   key={item.itemId}
                   type="button"
-                  onClick={() => selectItem(item)}
+                  disabled={disabled}
+                  onClick={() => toggleItem(item)}
                   className={cn(
-                    "flex min-h-11 items-center justify-between gap-3 rounded-lg border p-3 text-left text-sm transition-colors duration-150 hover:bg-muted/40",
+                    "flex min-h-11 items-center justify-between gap-3 rounded-lg border p-3 text-left text-sm transition-colors duration-150",
                     checked ? "border-primary bg-primary/5" : "border-border",
+                    disabled ? "cursor-not-allowed opacity-50" : "hover:bg-muted/40",
                   )}
                 >
-                  <span className="font-medium">
-                    {item.treatmentName} <span className="font-normal text-muted-foreground">— {item.providerName}</span>
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <span
+                      className={cn(
+                        "flex size-4 shrink-0 items-center justify-center rounded border transition-colors duration-150",
+                        checked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40",
+                      )}
+                    >
+                      {checked && <Check className="size-3" />}
+                    </span>
+                    <span className="min-w-0 truncate font-medium">
+                      {item.treatmentName} <span className="font-normal text-muted-foreground">— {item.providerName}</span>
+                      {disabled && <span className="text-muted-foreground"> · başka hekim</span>}
+                    </span>
                   </span>
                   <span className="shrink-0 text-muted-foreground">
                     {item.remainingSessions}/{item.sessionCount} kaldı

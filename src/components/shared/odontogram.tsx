@@ -1,8 +1,11 @@
 "use client"
 
+/* eslint-disable @next/next/no-img-element -- the teeth are 52 tiny local
+   PNG tiles rendered fluid-width in a grid; next/image's per-image width/height
+   + optimization pipeline adds no value here and fights the responsive layout. */
+
 import { useState } from "react"
 
-import { Button } from "@/components/ui/button"
 import {
   archesForMode,
   DENTITION_MODE_LABELS,
@@ -15,49 +18,23 @@ import {
 import { cn } from "@/lib/utils"
 
 /**
- * Interactive FDI / ISO 3950 odontogram — a controlled tooth picker. The
- * founder-approved single source for charting which teeth a treatment applies
- * to (Sprint 33). Deliberately self-contained and dumb: it owns only the
- * Daimi/Süt/Karışık view toggle; the selected teeth are fully controlled by
- * the parent via `value`/`onChange`, so the same chart drops into the plan
- * wizard, the item edit sheet, and any future dental-chart screen unchanged.
+ * Interactive FDI / ISO 3950 odontogram — a controlled tooth picker (Sprint
+ * 33). Each tooth is a photorealistic image tile (`public/odontogram/<fdi>.png`,
+ * sliced from the founder-approved rendered chart), laid out on a light
+ * "clinical viewer" panel whose colour matches the tiles' background so they
+ * blend seamlessly. Selection is shown as a tinted card + ring around the tooth
+ * (the baked tooth image can't be recoloured). The chart owns only the
+ * Daimi/Süt/Karışık view toggle; selected teeth are fully controlled by the
+ * parent via `value`/`onChange`.
  *
- * `birthDate` only picks which dentition the chart OPENS on (age-based, the
- * clinical convention) — the user can always switch. Selection is optional by
- * design: no teeth means "whole-mouth / not tooth-specific", a valid state
- * for scaling, whitening, dentures, x-rays, etc.
+ * `birthDate` only picks which dentition the chart OPENS on (age-based) — the
+ * user can always switch. Selection is optional: no teeth means "whole-mouth /
+ * not tooth-specific".
  */
-/**
- * A single generic tooth silhouette (crown dome + two roots), drawn once and
- * reused for every position. A single refined glyph reads more premium/minimal
- * (Apple/Linear) than a busy set of per-type anatomical shapes; `flip` mirrors
- * it vertically so upper-jaw crowns point down and lower-jaw crowns point up,
- * meeting at the midline like a real bite.
- */
-function ToothGlyph({ selected, flip }: { selected: boolean; flip: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden
-      className={cn(
-        "h-8 w-[26px] shrink-0 transition-colors duration-150",
-        selected
-          ? "fill-primary stroke-primary drop-shadow-sm"
-          : "fill-background stroke-border group-hover:fill-primary/10 group-hover:stroke-primary/40",
-      )}
-      strokeWidth={1.5}
-      strokeLinejoin="round"
-    >
-      {/* Mirror upper-jaw teeth in SVG user units (deterministic — a CSS
-          scale transform-origin on the <svg> proved unreliable) so their
-          crowns point down toward the bite line. */}
-      <path
-        transform={flip ? "translate(0 24) scale(1 -1)" : undefined}
-        d="M12 2C8.5 2 5.5 4.2 5.5 8c0 2.2.6 3.9 1.1 5.9.45 1.8.5 3.8.75 5.7.22 1.7.45 3.4 1.35 3.4.92 0 1-1.7 1.2-3.5.18-1.5.3-2.8.85-2.8s.67 1.3.85 2.8c.2 1.8.28 3.5 1.2 3.5.9 0 1.13-1.7 1.35-3.4.25-1.9.3-3.9.75-5.7.5-2 1.1-3.7 1.1-5.9 0-3.8-3-6-6.5-6z"
-      />
-    </svg>
-  )
-}
+
+// Matches the background baked into the tooth PNG tiles, so a tile's own
+// rectangle is invisible against the panel.
+const PANEL_BG = "#f6f8fb"
 
 function ToothButton({
   number,
@@ -69,15 +46,15 @@ function ToothButton({
   number: number
   selected: boolean
   disabled?: boolean
-  /** "upper" = upper jaw (crown points down, number sits above); "lower" = the mirror. */
+  /** "upper" = upper jaw (number sits above the crown); "lower" = number below. */
   orientation: "upper" | "lower"
   onToggle: (number: number) => void
 }) {
   const label = (
     <span
       className={cn(
-        "text-[10px] leading-none tabular-nums transition-colors duration-150",
-        selected ? "text-primary font-semibold" : "text-muted-foreground",
+        "text-[11px] leading-none tabular-nums transition-colors duration-150",
+        selected ? "text-primary font-semibold" : "text-slate-500",
       )}
     >
       {number}
@@ -92,13 +69,22 @@ function ToothButton({
       disabled={disabled}
       onClick={() => onToggle(number)}
       className={cn(
-        "group flex shrink-0 flex-col items-center gap-0.5 rounded-md px-0.5 py-1 outline-none",
-        "focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+        "group flex min-w-0 flex-1 basis-0 flex-col items-center gap-1 rounded-xl px-1 py-2 outline-none transition-colors duration-150",
+        "max-w-[104px] focus-visible:ring-primary/50 focus-visible:ring-2",
+        selected ? "bg-primary/15 ring-primary ring-2 ring-inset" : "hover:bg-primary/8",
         "disabled:pointer-events-none disabled:opacity-50",
       )}
     >
       {orientation === "upper" && label}
-      <ToothGlyph selected={selected} flip={orientation === "upper"} />
+      <img
+        src={`/odontogram/${number}.png?v=2`}
+        alt=""
+        draggable={false}
+        className={cn(
+          "h-auto w-full max-w-[92px] select-none transition-transform duration-150 group-hover:scale-[1.06]",
+          selected && "scale-[1.06]",
+        )}
+      />
       {orientation === "lower" && label}
     </button>
   )
@@ -121,15 +107,15 @@ function ToothRow({
 }) {
   const selectedSet = new Set(value)
   return (
-    <div className="flex items-stretch justify-center gap-2">
-      <div className="flex gap-0.5">
+    <div className="flex w-full items-stretch justify-center gap-1.5">
+      <div className="flex flex-1 justify-center gap-0.5">
         {right.map((number) => (
           <ToothButton key={number} number={number} orientation={orientation} selected={selectedSet.has(number)} disabled={disabled} onToggle={onToggle} />
         ))}
       </div>
       {/* Midline — the anatomical center between the two halves of the arch. */}
-      <div className="bg-border/70 w-px shrink-0 self-stretch" aria-hidden />
-      <div className="flex gap-0.5">
+      <div className="w-px shrink-0 self-stretch bg-gradient-to-b from-transparent via-slate-300/80 to-transparent" aria-hidden />
+      <div className="flex flex-1 justify-center gap-0.5">
         {left.map((number) => (
           <ToothButton key={number} number={number} orientation={orientation} selected={selectedSet.has(number)} disabled={disabled} onToggle={onToggle} />
         ))}
@@ -152,9 +138,9 @@ function ArchBlock({
   onToggle: (number: number) => void
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex w-full flex-col gap-1">
       {showLabel && (
-        <p className="text-muted-foreground text-center text-[11px] font-medium tracking-wide uppercase">{arch.label}</p>
+        <p className="text-center text-[11px] font-semibold tracking-wide text-slate-400 uppercase">{arch.label}</p>
       )}
       <ToothRow right={arch.upperRight} left={arch.upperLeft} orientation="upper" value={value} disabled={disabled} onToggle={onToggle} />
       <ToothRow right={arch.lowerRight} left={arch.lowerLeft} orientation="lower" value={value} disabled={disabled} onToggle={onToggle} />
@@ -184,59 +170,66 @@ function Odontogram({
   }
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="bg-muted inline-flex rounded-lg p-0.5" role="group" aria-label="Diş tipi">
-          {DENTITION_MODES.map((option) => {
-            const active = mode === option
-            return (
+    <div className={cn("flex flex-col gap-2.5", className)}>
+      {/* A premium white card containing the light "viewer" strip — depth from
+          a soft layered shadow + hairline border, teeth seamless on the inner
+          panel whose colour matches the tiles' baked background. */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04),0_16px_32px_-18px_rgb(15_23_42/0.20)] sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex items-center gap-1.5" role="group" aria-label="Diş tipi">
+            {DENTITION_MODES.map((option) => {
+              const active = mode === option
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setMode(option)}
+                  className={cn(
+                    "rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors duration-150 outline-none",
+                    "focus-visible:ring-primary/40 focus-visible:ring-2",
+                    active
+                      ? "bg-slate-800 text-white shadow-sm"
+                      : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                  )}
+                >
+                  {DENTITION_MODE_LABELS[option]}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs tabular-nums transition-colors duration-150",
+                value.length > 0 ? "border-primary/30 bg-primary/5 text-primary font-medium" : "border-slate-200 bg-white text-slate-500",
+              )}
+            >
+              {value.length > 0 ? `${value.length} diş seçili` : "Diş seçilmedi"}
+            </span>
+            {value.length > 0 && !disabled && (
               <button
-                key={option}
                 type="button"
-                aria-pressed={active}
-                onClick={() => setMode(option)}
-                className={cn(
-                  "rounded-md px-3 py-1 text-xs font-medium transition-colors duration-150 outline-none",
-                  "focus-visible:ring-ring/50 focus-visible:ring-[2px]",
-                  active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                )}
+                onClick={() => onChange([])}
+                className="rounded-full px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-700"
               >
-                {DENTITION_MODE_LABELS[option]}
+                Temizle
               </button>
-            )
-          })}
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-xs tabular-nums">
-            {value.length > 0 ? `${value.length} diş seçili` : "Diş seçilmedi"}
-          </span>
-          {value.length > 0 && !disabled && (
-            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onChange([])}>
-              Temizle
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Small screens: let the arches scroll horizontally rather than squeeze
-          the tooth targets below a usable size. */}
-      <div className="-mx-1 overflow-x-auto px-1">
-        <div className="mx-auto flex w-fit flex-col gap-4 py-1">
+        {/* Teeth scale to width (no horizontal scroll) so a full arch is always
+            visible at once. */}
+        <div className="flex w-full flex-col gap-5 rounded-xl px-2 py-3 sm:px-3" style={{ backgroundColor: PANEL_BG }}>
           {arches.map((arch) => (
-            <ArchBlock
-              key={arch.mode}
-              arch={arch}
-              showLabel={arches.length > 1}
-              value={value}
-              disabled={disabled}
-              onToggle={toggle}
-            />
+            <ArchBlock key={arch.mode} arch={arch} showLabel={arches.length > 1} value={value} disabled={disabled} onToggle={toggle} />
           ))}
         </div>
       </div>
 
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground px-1 text-xs">
         Bu tedavinin uygulanacağı dişleri işaretleyin. Tüm ağzı ilgilendiren tedavilerde boş bırakabilirsiniz.
       </p>
     </div>
