@@ -3,6 +3,7 @@ import { tr } from "date-fns/locale"
 import {
   CalendarClock,
   CalendarDays,
+  ClipboardList,
   FileText,
   History,
   Pencil,
@@ -22,6 +23,7 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn, getInitials } from "@/lib/utils"
 import type { AIPatientSummary } from "@/lib/ai/queries"
+import type { ClinicSettings } from "@/lib/clinic/queries"
 import type { AppointmentListRow } from "@/lib/appointments/queries"
 import type { PatientDocument } from "@/lib/documents/queries"
 import { formatCurrency } from "@/lib/format/currency"
@@ -42,6 +44,7 @@ import { PatientEditSheet } from "./patient-edit-sheet"
 import { PatientInfoPanel } from "./patient-info-panel"
 import { PatientPaymentsSection } from "./patient-payments-section"
 import { PatientPlanPaymentSheet } from "./patient-plan-payment-sheet"
+import { PatientSummaryReport } from "./patient-summary-report"
 
 /** TRY first, then the rest — matches the ledger's per-currency order elsewhere. */
 function sortCurrencyEntries(entries: { currency: string; amount: number }[]) {
@@ -121,6 +124,7 @@ function PatientDetailView({
   isOwner,
   treatmentPlanActor,
   treatmentPlans,
+  clinic,
   appointmentError,
   aiSummary,
 }: {
@@ -142,6 +146,8 @@ function PatientDetailView({
   treatmentPlanActor: TreatmentPlanActor
   /** Sprint 28C — gerçek DB'den, sayfa seviyesinde önceden çekilmiş. */
   treatmentPlans: TreatmentPlanDetail[]
+  /** Sprint 35 — klinik başlık bilgisi (ad/adres/tel/logo), "Özet" raporunun üst bandı için. */
+  clinic: ClinicSettings | null
   appointmentError?: string
   aiSummary: AIPatientSummary | null
 }) {
@@ -305,6 +311,10 @@ function PatientDetailView({
               <FileText />
               Belgeler
             </TabsTrigger>
+            <TabsTrigger value="ozet">
+              <ClipboardList />
+              Özet
+            </TabsTrigger>
             <TabsTrigger value="gecmis">
               <History />
               Geçmiş
@@ -356,6 +366,10 @@ function PatientDetailView({
 
           <TabsContent value="belgeler">
             <PatientDocumentsSection patientId={patient.id} clinicId={clinicId} documents={documents} />
+          </TabsContent>
+
+          <TabsContent value="ozet">
+            <PatientSummaryReport patient={patient} clinic={clinic} treatmentPlans={treatmentPlans} />
           </TabsContent>
 
           <TabsContent value="gecmis" className="flex flex-col gap-8">
