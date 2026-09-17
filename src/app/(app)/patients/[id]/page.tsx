@@ -4,6 +4,7 @@ import { PatientDetailView } from "@/components/patients/patient-detail-view"
 import { getPatientSummaryForAI } from "@/lib/ai/queries"
 import { getAppointmentsForPatient } from "@/lib/appointments/queries"
 import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
+import { getClinicSettings } from "@/lib/clinic/queries"
 import { getPatientDocuments } from "@/lib/documents/queries"
 import { getPatientActivities, getPatientById, getPatientOptions } from "@/lib/patients/queries"
 import { currentStaffHasPermission } from "@/lib/permissions/queries"
@@ -49,7 +50,10 @@ export default async function PatientDetailPage({ params, searchParams }: Patien
     notFound()
   }
 
-  const aiSummary = await getPatientSummaryForAI(id, hasFinancialAccess)
+  const [aiSummary, clinic] = await Promise.all([
+    getPatientSummaryForAI(id, hasFinancialAccess),
+    staffMember ? getClinicSettings(staffMember.clinicId) : Promise.resolve(null),
+  ])
 
   const canManage = staffMember?.role !== "doctor"
   const canManagePayments =
@@ -83,6 +87,7 @@ export default async function PatientDetailPage({ params, searchParams }: Patien
       isOwner={isOwner}
       treatmentPlanActor={treatmentPlanActor}
       treatmentPlans={treatmentPlans}
+      clinic={clinic}
       appointmentError={randevuHata}
       aiSummary={aiSummary}
     />

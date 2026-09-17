@@ -214,3 +214,25 @@
     display: none !important;
   }
 }
+
+/* Sprint 35 — patient "Özet" report (a printable surface buried inside the
+   patient card's tabs, unlike Paketler which is its own page). When a
+   [data-print-region] is present, print ONLY that region: hide everything via
+   visibility, re-show the region, and float it to the page origin. Scoped with
+   :has() so pages without a print region (e.g. Paketler) keep the chrome-only
+   rule above. */
+@media print {
+  body:has([data-print-region]) * {
+    visibility: hidden !important;
+  }
+  [data-print-region],
+  [data-print-region] * {
+    visibility: visible !important;
+  }
+  [data-print-region] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
