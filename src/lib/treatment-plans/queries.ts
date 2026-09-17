@@ -281,6 +281,8 @@ export type TreatmentPlanItemDetail = {
   providerShareAmount: number | null
   /** Sprint 30.3 — planned follow-up date, set at definition time (optional). Distinct from a session's own `controlDate`, recorded retroactively at completion. */
   controlDate: string | null
+  /** Sprint 33 — FDI tooth numbers this item targets; empty means whole-mouth / not tooth-specific. */
+  toothNumbers: number[]
   status: TreatmentLifecycleStatus
   revisionNo: number
   sessions: TreatmentSessionRow[]
@@ -329,7 +331,7 @@ async function loadTreatmentPlanDetails(
   let itemQuery = supabase
     .from("treatment_plan_items")
     .select(
-      "id, treatment_plan_id, provider_id, treatment_name, session_count, unit_price, total_price, currency, provider_share_amount, control_date, status, revision_no, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name)",
+      "id, treatment_plan_id, provider_id, treatment_name, session_count, unit_price, total_price, currency, provider_share_amount, control_date, tooth_numbers, status, revision_no, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name)",
     )
     .in("treatment_plan_id", planIds)
   if (!includeDeleted) itemQuery = itemQuery.is("deleted_at", null)
@@ -409,6 +411,7 @@ async function loadTreatmentPlanDetails(
       currency: row.currency,
       providerShareAmount: row.provider_share_amount,
       controlDate: row.control_date,
+      toothNumbers: row.tooth_numbers ?? [],
       status: row.status,
       revisionNo: row.revision_no,
       sessions: itemSessions,

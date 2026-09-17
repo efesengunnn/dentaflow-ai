@@ -28,6 +28,8 @@ export type DraftTreatmentSelection = {
   /** Sprint 31 — carried from the catalog item, or chosen (custom) in the pricing step. */
   currency: CurrencyCode
   controlDate: string | undefined
+  /** Sprint 33 — FDI teeth charted for this treatment in Adım 2; empty = whole-mouth. */
+  toothNumbers: number[]
 }
 
 const WIZARD_STEPS: TreatmentPlanStepperStep[] = [
@@ -61,11 +63,14 @@ function createId(): string {
  */
 function TreatmentPlanBuilder({
   patientId,
+  patientBirthDate,
   staffOptions,
   isOwner,
   onCreated,
 }: {
   patientId: string
+  /** Sprint 33 — only picks which dentition the odontogram opens on (age-based); omitted in the appointment flow, where it isn't loaded. */
+  patientBirthDate?: string | null
   staffOptions: AssignableStaff[]
   isOwner: boolean
   onCreated: (result: { planId: string; itemIds: string[] }) => void
@@ -119,6 +124,7 @@ function TreatmentPlanBuilder({
           unitPrice: defaultPrice ?? undefined,
           currency: (currency as CurrencyCode) ?? "TRY",
           controlDate: undefined,
+          toothNumbers: [],
         },
       ]
     })
@@ -127,7 +133,7 @@ function TreatmentPlanBuilder({
   function handleAddCustomTreatment(name: string) {
     setDraftTreatments((prev) => [
       ...prev,
-      { key: createId(), treatmentName: name, isCustom: true, sessionCount: 1, unitPrice: undefined, currency: "TRY", controlDate: undefined },
+      { key: createId(), treatmentName: name, isCustom: true, sessionCount: 1, unitPrice: undefined, currency: "TRY", controlDate: undefined, toothNumbers: [] },
     ])
   }
 
@@ -151,6 +157,10 @@ function TreatmentPlanBuilder({
     setDraftTreatments((prev) => prev.map((row) => (row.key === key ? { ...row, controlDate } : row)))
   }
 
+  function handleChangeToothNumbers(key: string, toothNumbers: number[]) {
+    setDraftTreatments((prev) => prev.map((row) => (row.key === key ? { ...row, toothNumbers } : row)))
+  }
+
   /** Mevcut turu (Adım 1-4'te toplanan sağlayıcı + tedaviler) kalıcı `committedItems`'a taşır ve taslağı sıfırlar. */
   function commitDraftRound() {
     if (!draftProvider || draftTreatments.length === 0) return
@@ -161,6 +171,7 @@ function TreatmentPlanBuilder({
       unitPrice: row.unitPrice,
       currency: row.currency,
       controlDate: row.controlDate,
+      toothNumbers: row.toothNumbers,
     }))
     setCommittedItems((prev) => [...prev, ...newItems])
     setProviderNameById((prev) => ({ ...prev, [draftProvider.id]: draftProvider.fullName }))
@@ -238,11 +249,13 @@ function TreatmentPlanBuilder({
           {step === 2 && draftProvider && (
             <TreatmentPlanTreatmentsStep
               providerName={draftProvider.fullName}
+              patientBirthDate={patientBirthDate}
               catalog={catalog}
               selections={draftTreatments}
               onToggleCatalogItem={handleToggleCatalogItem}
               onAddCustom={handleAddCustomTreatment}
               onRemoveCustom={handleRemoveCustomTreatment}
+              onChangeToothNumbers={handleChangeToothNumbers}
             />
           )}
           {step === 3 && (

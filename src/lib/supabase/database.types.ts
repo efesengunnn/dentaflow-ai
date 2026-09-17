@@ -1024,6 +1024,7 @@ export type Database = {
           revision_no: number
           session_count: number
           status: Database["public"]["Enums"]["treatment_lifecycle_status"]
+          tooth_numbers: number[] | null
           total_price: number | null
           treatment_name: string
           treatment_plan_id: string
@@ -1049,6 +1050,7 @@ export type Database = {
           revision_no?: number
           session_count?: number
           status?: Database["public"]["Enums"]["treatment_lifecycle_status"]
+          tooth_numbers?: number[] | null
           total_price?: number | null
           treatment_name: string
           treatment_plan_id: string
@@ -1074,6 +1076,7 @@ export type Database = {
           revision_no?: number
           session_count?: number
           status?: Database["public"]["Enums"]["treatment_lifecycle_status"]
+          tooth_numbers?: number[] | null
           total_price?: number | null
           treatment_name?: string
           treatment_plan_id?: string

@@ -1,6 +1,19 @@
 import { z } from "zod"
 
 import { SUPPORTED_CURRENCIES } from "@/lib/format/currency"
+import { isValidFdiNumber } from "@/lib/odontogram/fdi"
+
+/**
+ * FDI/ISO 3950 tooth numbers a plan item applies to (Sprint 33) — optional
+ * everywhere: an empty/absent list means "whole-mouth / not tooth-specific".
+ * 52 is the full mouth (32 permanent + 20 primary), the hard upper bound.
+ */
+const toothNumbersSchema = z
+  .array(z.number().int())
+  .max(52, "Çok fazla diş seçildi.")
+  .refine((teeth) => teeth.every(isValidFdiNumber), "Geçersiz diş numarası.")
+  .refine((teeth) => new Set(teeth).size === teeth.length, "Aynı diş birden fazla seçilemez.")
+  .optional()
 
 const TREATMENT_PAYMENT_METHOD_VALUES = ["cash", "credit_card", "bank_transfer", "other"] as const
 const TREATMENT_PAYMENT_CORRECTION_TYPE_VALUES = ["refund", "adjustment"] as const
@@ -26,6 +39,8 @@ export const treatmentPlanItemInputSchema = z.object({
   currency: z.enum(SUPPORTED_CURRENCIES),
   /** Sprint 30.3 — planned follow-up date for this specific patient's item, set at definition time. Always patient+item specific, never a fixed per-treatment-type default. */
   controlDate: z.string().optional(),
+  /** Sprint 33 — FDI tooth numbers this item targets (optional; empty = whole-mouth). */
+  toothNumbers: toothNumbersSchema,
 })
 
 export type TreatmentPlanItemInput = z.infer<typeof treatmentPlanItemInputSchema>
@@ -52,6 +67,8 @@ export const reviseTreatmentPlanItemSchema = z.object({
   treatmentName: z.string().trim().min(1, "Tedavi adını girin.").max(120, "Tedavi adı 120 karakteri geçemez."),
   sessionCount: z.number().int().min(1, "En az 1 seans olmalı.").max(999, "Geçerli bir seans sayısı girin."),
   unitPrice: z.number().min(0, "Fiyat negatif olamaz.").optional(),
+  /** Sprint 33 — revising which teeth an existing item targets (optional; empty = whole-mouth). */
+  toothNumbers: toothNumbersSchema,
 })
 
 export type ReviseTreatmentPlanItemValues = z.infer<typeof reviseTreatmentPlanItemSchema>

@@ -3,6 +3,7 @@
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { currencySymbol } from "@/lib/format/currency"
+import { formatToothList } from "@/lib/odontogram/fdi"
 import type { TreatmentPlanItemInput } from "@/lib/treatment-plans/schema"
 
 function formatMoney(amount: number, currency: string): string {
@@ -68,16 +69,20 @@ function TreatmentPlanSummaryStep({
               <p className="text-sm font-semibold">{providerNameById[providerId] ?? "Hekim"}</p>
               <div className="flex flex-col gap-1 rounded-xl border border-border p-3">
                 {providerItems.map((item, index) => (
-                  <div
-                    key={`${item.treatmentName}-${index}`}
-                    className="flex items-center justify-between gap-3 text-sm"
-                  >
-                    <span className="min-w-0 truncate">
-                      {item.treatmentName} <span className="text-muted-foreground">· {item.sessionCount} seans</span>
-                    </span>
-                    <span className="shrink-0 font-medium tabular-nums">
-                      {formatMoney(item.unitPrice ?? 0, item.currency)}
-                    </span>
+                  <div key={`${item.treatmentName}-${index}`} className="flex flex-col gap-0.5">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate">
+                        {item.treatmentName} <span className="text-muted-foreground">· {item.sessionCount} seans</span>
+                      </span>
+                      <span className="shrink-0 font-medium tabular-nums">
+                        {formatMoney(item.unitPrice ?? 0, item.currency)}
+                      </span>
+                    </div>
+                    {item.toothNumbers && item.toothNumbers.length > 0 && (
+                      <span className="text-muted-foreground text-xs tabular-nums">
+                        Dişler: {formatToothList(item.toothNumbers)}
+                      </span>
+                    )}
                   </div>
                 ))}
                 <div className="mt-1 flex items-start justify-between border-t pt-1.5 text-sm">

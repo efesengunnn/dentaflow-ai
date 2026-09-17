@@ -38,7 +38,12 @@ export default async function NewTreatmentPlanPage({ params }: NewTreatmentPlanP
     <PageContainer size="narrow">
       <BreadcrumbLabel value={patient.fullName} />
       <PageHeader title="Tedavi Planı Oluştur" description={`${patient.fullName} için yeni bir tedavi planı oluşturun.`} />
-      <TreatmentPlanBuilderPage patientId={patient.id} staffOptions={staffOptions} isOwner={isOwner} />
+      <TreatmentPlanBuilderPage
+        patientId={patient.id}
+        patientBirthDate={patient.dateOfBirth}
+        staffOptions={staffOptions}
+        isOwner={isOwner}
+      />
     </PageContainer>
   )
 }
