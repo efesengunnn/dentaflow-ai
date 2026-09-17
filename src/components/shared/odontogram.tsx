@@ -27,17 +27,62 @@ import { cn } from "@/lib/utils"
  * design: no teeth means "whole-mouth / not tooth-specific", a valid state
  * for scaling, whitening, dentures, x-rays, etc.
  */
+/**
+ * A single generic tooth silhouette (crown dome + two roots), drawn once and
+ * reused for every position. A single refined glyph reads more premium/minimal
+ * (Apple/Linear) than a busy set of per-type anatomical shapes; `flip` mirrors
+ * it vertically so upper-jaw crowns point down and lower-jaw crowns point up,
+ * meeting at the midline like a real bite.
+ */
+function ToothGlyph({ selected, flip }: { selected: boolean; flip: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden
+      className={cn(
+        "h-8 w-[26px] shrink-0 transition-colors duration-150",
+        selected
+          ? "fill-primary stroke-primary drop-shadow-sm"
+          : "fill-background stroke-border group-hover:fill-primary/10 group-hover:stroke-primary/40",
+      )}
+      strokeWidth={1.5}
+      strokeLinejoin="round"
+    >
+      {/* Mirror upper-jaw teeth in SVG user units (deterministic — a CSS
+          scale transform-origin on the <svg> proved unreliable) so their
+          crowns point down toward the bite line. */}
+      <path
+        transform={flip ? "translate(0 24) scale(1 -1)" : undefined}
+        d="M12 2C8.5 2 5.5 4.2 5.5 8c0 2.2.6 3.9 1.1 5.9.45 1.8.5 3.8.75 5.7.22 1.7.45 3.4 1.35 3.4.92 0 1-1.7 1.2-3.5.18-1.5.3-2.8.85-2.8s.67 1.3.85 2.8c.2 1.8.28 3.5 1.2 3.5.9 0 1.13-1.7 1.35-3.4.25-1.9.3-3.9.75-5.7.5-2 1.1-3.7 1.1-5.9 0-3.8-3-6-6.5-6z"
+      />
+    </svg>
+  )
+}
+
 function ToothButton({
   number,
   selected,
   disabled,
+  orientation,
   onToggle,
 }: {
   number: number
   selected: boolean
   disabled?: boolean
+  /** "upper" = upper jaw (crown points down, number sits above); "lower" = the mirror. */
+  orientation: "upper" | "lower"
   onToggle: (number: number) => void
 }) {
+  const label = (
+    <span
+      className={cn(
+        "text-[10px] leading-none tabular-nums transition-colors duration-150",
+        selected ? "text-primary font-semibold" : "text-muted-foreground",
+      )}
+    >
+      {number}
+    </span>
+  )
   return (
     <button
       type="button"
@@ -47,15 +92,14 @@ function ToothButton({
       disabled={disabled}
       onClick={() => onToggle(number)}
       className={cn(
-        "flex h-9 w-8 shrink-0 items-center justify-center rounded-md border text-[11px] font-medium tabular-nums transition-colors duration-150 outline-none",
+        "group flex shrink-0 flex-col items-center gap-0.5 rounded-md px-0.5 py-1 outline-none",
         "focus-visible:ring-ring/50 focus-visible:ring-[3px]",
         "disabled:pointer-events-none disabled:opacity-50",
-        selected
-          ? "border-primary bg-primary text-primary-foreground shadow-sm"
-          : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-foreground",
       )}
     >
-      {number}
+      {orientation === "upper" && label}
+      <ToothGlyph selected={selected} flip={orientation === "upper"} />
+      {orientation === "lower" && label}
     </button>
   )
 }
@@ -63,29 +107,31 @@ function ToothButton({
 function ToothRow({
   right,
   left,
+  orientation,
   value,
   disabled,
   onToggle,
 }: {
   right: number[]
   left: number[]
+  orientation: "upper" | "lower"
   value: number[]
   disabled?: boolean
   onToggle: (number: number) => void
 }) {
   const selectedSet = new Set(value)
   return (
-    <div className="flex items-center justify-center gap-2">
-      <div className="flex gap-1">
+    <div className="flex items-stretch justify-center gap-2">
+      <div className="flex gap-0.5">
         {right.map((number) => (
-          <ToothButton key={number} number={number} selected={selectedSet.has(number)} disabled={disabled} onToggle={onToggle} />
+          <ToothButton key={number} number={number} orientation={orientation} selected={selectedSet.has(number)} disabled={disabled} onToggle={onToggle} />
         ))}
       </div>
       {/* Midline — the anatomical center between the two halves of the arch. */}
-      <div className="bg-border h-9 w-px shrink-0" aria-hidden />
-      <div className="flex gap-1">
+      <div className="bg-border/70 w-px shrink-0 self-stretch" aria-hidden />
+      <div className="flex gap-0.5">
         {left.map((number) => (
-          <ToothButton key={number} number={number} selected={selectedSet.has(number)} disabled={disabled} onToggle={onToggle} />
+          <ToothButton key={number} number={number} orientation={orientation} selected={selectedSet.has(number)} disabled={disabled} onToggle={onToggle} />
         ))}
       </div>
     </div>
@@ -110,8 +156,8 @@ function ArchBlock({
       {showLabel && (
         <p className="text-muted-foreground text-center text-[11px] font-medium tracking-wide uppercase">{arch.label}</p>
       )}
-      <ToothRow right={arch.upperRight} left={arch.upperLeft} value={value} disabled={disabled} onToggle={onToggle} />
-      <ToothRow right={arch.lowerRight} left={arch.lowerLeft} value={value} disabled={disabled} onToggle={onToggle} />
+      <ToothRow right={arch.upperRight} left={arch.upperLeft} orientation="upper" value={value} disabled={disabled} onToggle={onToggle} />
+      <ToothRow right={arch.lowerRight} left={arch.lowerLeft} orientation="lower" value={value} disabled={disabled} onToggle={onToggle} />
     </div>
   )
 }
