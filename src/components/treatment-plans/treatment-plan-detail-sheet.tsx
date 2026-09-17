@@ -161,9 +161,9 @@ function TreatmentPlanDetailSheet({
                   title={`"${plan.planName}" planı silinsin mi?`}
                   description="Plan ve altındaki tüm kalemler aktif ekranlardan kaldırılır. Randevular ve tamamlanmış seanslar etkilenmez, kayıt kalıcı olarak silinmez."
                   triggerLabel="Planı Sil"
-                  requireReason
-                  reasonLabel="Silme sebebi"
-                  reasonPlaceholder="Bu planı neden siliyorsunuz?"
+                  showReason
+                  reasonLabel="Silme sebebi (opsiyonel)"
+                  reasonPlaceholder="Bu planı neden siliyorsunuz? (opsiyonel)"
                   onConfirm={async (reason) => {
                     const result = await deleteTreatmentPlan({ planId: plan.id, reason })
                     if (result?.success) {

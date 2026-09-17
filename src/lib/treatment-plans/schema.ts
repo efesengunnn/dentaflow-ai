@@ -146,7 +146,8 @@ export type TreatmentPlanPaymentCorrectionValues = z.infer<typeof treatmentPlanP
  */
 export const deleteTreatmentPlanSchema = z.object({
   planId: z.string().min(1),
-  reason: z.string().trim().min(1, "Silme sebebini girin.").max(500, "Sebep 500 karakteri geçemez."),
+  /** Sprint 34 — optional (founder: plan delete offers a reason, doesn't force one). */
+  reason: z.string().trim().max(500, "Sebep 500 karakteri geçemez.").optional(),
 })
 
 export type DeleteTreatmentPlanValues = z.infer<typeof deleteTreatmentPlanSchema>
