@@ -35,7 +35,7 @@ export default async function NewTreatmentPlanPage({ params }: NewTreatmentPlanP
   const isOwner = staffMember?.role === "owner"
 
   return (
-    <PageContainer size="narrow">
+    <PageContainer size="narrow" className="max-w-7xl">
       <BreadcrumbLabel value={patient.fullName} />
       <PageHeader title="Tedavi Planı Oluştur" description={`${patient.fullName} için yeni bir tedavi planı oluşturun.`} />
       <TreatmentPlanBuilderPage
