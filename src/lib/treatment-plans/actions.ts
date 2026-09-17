@@ -326,13 +326,15 @@ export async function deleteTreatmentPlan(values: DeleteTreatmentPlanValues): Pr
   if (planError || !plan) return { error: "Tedavi planı bulunamadı." }
 
   const nowIso = new Date().toISOString()
+  // Sprint 34 — reason is now optional; null when the user leaves it blank.
+  const reason = parsed.data.reason?.trim() || null
 
   const { error: updateError } = await supabase
     .from("treatment_plans")
     .update({
       deleted_at: nowIso,
       deleted_by: staffMember.userId,
-      delete_reason: parsed.data.reason,
+      delete_reason: reason,
       updated_by: staffMember.userId,
     })
     .eq("id", plan.id)
@@ -344,7 +346,7 @@ export async function deleteTreatmentPlan(values: DeleteTreatmentPlanValues): Pr
     .update({
       deleted_at: nowIso,
       deleted_by: staffMember.userId,
-      delete_reason: parsed.data.reason,
+      delete_reason: reason,
       updated_by: staffMember.userId,
     })
     .eq("treatment_plan_id", plan.id)
@@ -354,7 +356,7 @@ export async function deleteTreatmentPlan(values: DeleteTreatmentPlanValues): Pr
     clinic_id: staffMember.clinicId,
     treatment_plan_id: plan.id,
     activity_type: "plan_deleted",
-    description: `Tedavi planı silindi: ${plan.plan_name} — ${parsed.data.reason}`,
+    description: `Tedavi planı silindi: ${plan.plan_name}${reason ? ` — ${reason}` : ""}`,
     created_by: staffMember.userId,
   }
   await supabase.from("treatment_activities").insert(activity)

@@ -71,7 +71,7 @@ export type AppointmentListResult = {
 }
 
 const APPOINTMENT_LIST_SELECT =
-  "id, patient_id, staff_id, reason, starts_at, ends_at, status, created_at, standalone_treatment_name, patient:patients!appointments_patient_id_fkey(full_name, phone), provider:staff_members!appointments_staff_id_fkey(full_name), treatments!treatments_appointment_id_fkey(series_id, session_number, status, series:treatment_series(treatment_type, total_sessions)), treatment_plan_item:treatment_plan_items!appointments_treatment_plan_item_id_fkey(treatment_name)"
+  "id, patient_id, staff_id, reason, starts_at, ends_at, status, created_at, standalone_treatment_name, patient:patients!appointments_patient_id_fkey(full_name, phone), provider:staff_members!appointments_staff_id_fkey(full_name), treatments!treatments_appointment_id_fkey(series_id, session_number, status, series:treatment_series(treatment_type, total_sessions)), treatment_plan_item:treatment_plan_items!appointments_treatment_plan_item_id_fkey(treatment_name), appointment_treatment_plan_items(item:treatment_plan_items(treatment_name))"
 
 type RawAppointmentListRow = {
   id: string
@@ -92,6 +92,8 @@ type RawAppointmentListRow = {
     series: { treatment_type: string; total_sessions: number } | null
   }[] | null
   treatment_plan_item: { treatment_name: string } | null
+  /** Sprint 34 — every plan item this appointment covers (one visit / multiple treatments). */
+  appointment_treatment_plan_items: { item: { treatment_name: string } | null }[] | null
 }
 
 /**
@@ -148,8 +150,27 @@ function mapAppointmentListRow(
     status: row.status,
     createdAt: row.created_at,
     linkedTreatment,
-    procedureName: row.treatment_plan_item?.treatment_name ?? row.standalone_treatment_name ?? linkedTreatment?.treatmentType ?? null,
+    procedureName: deriveProcedureName(row, linkedTreatment),
   }
+}
+
+/**
+ * Sprint 34 — an appointment can cover several plan items; show them all
+ * (e.g. "Dolgu, Kanal Tedavisi") rather than just one. Falls back to the
+ * legacy single plan-item link, then the standalone name, then the legacy
+ * series type — the pre-Sprint-34 behaviour for appointments with no junction
+ * rows.
+ */
+function deriveProcedureName(
+  row: RawAppointmentListRow,
+  linkedTreatment: AppointmentLinkedTreatment | null,
+): string | null {
+  const names = (row.appointment_treatment_plan_items ?? [])
+    .map((link) => link.item?.treatment_name)
+    .filter((name): name is string => Boolean(name))
+    .sort((a, b) => a.localeCompare(b, "tr"))
+  if (names.length > 0) return names.join(", ")
+  return row.treatment_plan_item?.treatment_name ?? row.standalone_treatment_name ?? linkedTreatment?.treatmentType ?? null
 }
 
 /**

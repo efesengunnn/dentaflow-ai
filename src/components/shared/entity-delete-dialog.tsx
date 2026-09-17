@@ -39,6 +39,8 @@ type EntityDeleteDialogProps = {
   confirmingLabel?: string
   /** Sprint 28C.1 — Treatment Plan flexible delete requires a mandatory audit reason; other modules (patients/leads/staff/appointments) leave this off. */
   requireReason?: boolean
+  /** Sprint 34 — show the reason field but keep it OPTIONAL (founder: plan delete should offer a reason, not force one). Ignored when `requireReason` is set. */
+  showReason?: boolean
   reasonLabel?: string
   reasonPlaceholder?: string
 }
@@ -68,9 +70,11 @@ function EntityDeleteDialog({
   confirmLabel = "Sil",
   confirmingLabel = "Siliniyor...",
   requireReason = false,
+  showReason = false,
   reasonLabel = "Sebep",
   reasonPlaceholder = "Bu kaydı neden siliyorsunuz?",
 }: EntityDeleteDialogProps) {
+  const reasonVisible = requireReason || showReason
   const [isPending, startTransition] = useTransition()
   const [reason, setReason] = useState("")
   const [reasonError, setReasonError] = useState<string | null>(null)
@@ -111,7 +115,7 @@ function EntityDeleteDialog({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
-        {requireReason && (
+        {reasonVisible && (
           <div className="flex flex-col gap-1.5 px-4">
             <FieldLabel htmlFor={reasonId}>{reasonLabel}</FieldLabel>
             <Textarea
