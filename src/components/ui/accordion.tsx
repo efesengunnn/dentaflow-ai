@@ -30,13 +30,21 @@ function AccordionTrigger({
       <AccordionPrimitive.Trigger
         data-slot="accordion-trigger"
         className={cn(
-          "focus-visible:border-ring focus-visible:ring-ring/50 flex flex-1 items-center justify-between gap-3 rounded-md py-3 text-left text-sm font-medium transition-all outline-none hover:underline focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 [&[data-state=open]>svg]:rotate-180",
+          "focus-visible:border-ring focus-visible:ring-ring/50 flex flex-1 items-center justify-between gap-3 rounded-md py-3 text-left text-sm font-medium transition-all outline-none hover:underline focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 [&[data-state=open]_[data-slot=accordion-chevron]]:bg-primary/10 [&[data-state=open]_[data-slot=accordion-chevron]]:text-primary [&[data-state=open]_svg]:rotate-180",
           className,
         )}
         {...props}
       >
         {children}
-        <ChevronDown className="text-muted-foreground pointer-events-none size-4 shrink-0 translate-y-0.5 transition-transform duration-200" />
+        {/* Sprint 36 — the down-chevron sits in a muted round chip (was a faint
+            bare arrow) so the expand affordance reads clearly; the chip tints
+            primary when open. */}
+        <span
+          data-slot="accordion-chevron"
+          className="text-muted-foreground pointer-events-none grid size-6 shrink-0 place-content-center rounded-full bg-muted transition-colors"
+        >
+          <ChevronDown className="size-4 transition-transform duration-200" />
+        </span>
       </AccordionPrimitive.Trigger>
     </AccordionPrimitive.Header>
   )
