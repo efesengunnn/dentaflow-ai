@@ -39,11 +39,11 @@ function ToothChartAccordion({
   onChangeToothNumbers: (key: string, toothNumbers: number[]) => void
 }) {
   return (
-    <Accordion type="single" collapsible className="rounded-lg">
+    <Accordion type="single" collapsible className="border-border bg-muted/30 rounded-xl border">
       <AccordionItem value="teeth" className="border-b-0">
-        <AccordionTrigger className="py-2 hover:no-underline">
+        <AccordionTrigger className="px-3 py-2.5 hover:no-underline">
           <span className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-normal">Diş Şeması</span>
+            <span className="text-sm font-medium">Diş Şeması</span>
             {selection.toothNumbers.length > 0 ? (
               <Badge variant="secondary" className="tabular-nums">
                 {formatToothList(selection.toothNumbers)}
@@ -53,7 +53,7 @@ function ToothChartAccordion({
             )}
           </span>
         </AccordionTrigger>
-        <AccordionContent>
+        <AccordionContent className="px-3">
           <Odontogram
             value={selection.toothNumbers}
             onChange={(numbers) => onChangeToothNumbers(selection.key, numbers)}
@@ -123,7 +123,7 @@ function TreatmentPlanTreatmentsStep({
         onClear={() => setSearch("")}
       />
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
         {catalog.length === 0 ? (
           <p className="text-muted-foreground py-2 text-sm">
             {providerName} için Ayarlar&apos;da tanımlı bir tedavi kataloğu yok. Aşağıdan &quot;Özel tedavi ekle&quot;
@@ -136,7 +136,12 @@ function TreatmentPlanTreatmentsStep({
             const selection = selectionByName.get(item.treatmentType)
             return (
               <div key={item.id} className="flex flex-col gap-1.5">
-                <Label className="hover:bg-muted/40 has-[[data-checked]]:bg-primary/5 flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-2 transition-colors duration-150">
+                {/* Sprint 36 — each treatment is now a card-like row (border +
+                    resting shadow, lift on hover). Selected state is unmistakable:
+                    a solid primary left-accent bar (via a transparent→primary left
+                    border, so checking causes no layout shift), a primary-tinted
+                    fill and a primary ring. */}
+                <Label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl border border-border border-l-4 border-l-transparent bg-card px-3 py-2.5 shadow-xs transition-all duration-150 hover:bg-muted/30 hover:shadow-sm has-[[data-checked]]:border-l-primary has-[[data-checked]]:bg-primary/5 has-[[data-checked]]:ring-1 has-[[data-checked]]:ring-primary/30">
                   <span className="flex items-center gap-3">
                     <Checkbox
                       checked={selection !== undefined}
@@ -164,11 +169,14 @@ function TreatmentPlanTreatmentsStep({
       </div>
 
       {customSelections.length > 0 && (
-        <div className="flex flex-col gap-1.5 border-t pt-3">
+        <div className="flex flex-col gap-2 border-t pt-3">
           <p className="text-muted-foreground text-xs font-medium">Özel Tedaviler</p>
           {customSelections.map((row) => (
             <div key={row.key} className="flex flex-col gap-1.5">
-              <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg px-2.5 py-2">
+              {/* Sprint 36 — custom rows match the catalog rows' card treatment.
+                  They're always "selected", so they carry the primary left accent
+                  at rest. */}
+              <div className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-border border-l-4 border-l-primary bg-primary/5 px-3 py-2.5 shadow-xs ring-1 ring-primary/30">
                 <span className="font-medium">{row.treatmentName}</span>
                 <Button
                   type="button"

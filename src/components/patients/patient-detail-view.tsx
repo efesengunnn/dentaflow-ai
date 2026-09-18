@@ -75,8 +75,11 @@ function KpiCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-1 rounded-2xl border p-5",
-        tone === "warning" ? "border-warning/25 bg-warning/5" : "border-border bg-card",
+        // Sprint 36 — aligned with the base <Card> prominence: resting shadow-sm
+        // + a firm ring so the three hero KPIs sit clearly off the page; the
+        // warning (balance-due) tone gets a warm-tinted ring to match its border.
+        "flex flex-col gap-1 rounded-2xl border p-5 shadow-sm ring-1",
+        tone === "warning" ? "border-warning/25 ring-warning/25 bg-warning/5" : "border-border ring-foreground/12 bg-card",
       )}
     >
       <div className="flex items-center gap-2">

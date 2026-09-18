@@ -4,11 +4,19 @@ import { cn } from "@/lib/utils"
 
 /**
  * Sprint 21 — Premium Visual Redesign: `rounded-2xl` (was `rounded-xl`) for a
- * softer, more Notion/Attio-like corner, plus a resting `shadow-xs` (the
- * already-calibrated whisper-elevation token, see docs/DESIGN_SYSTEM.md's
- * Elevation section) so a card reads as gently lifted off the page instead
- * of a flat hairline-bordered box. Every consumer of `<Card>` picks this up
- * for free — no per-module changes needed.
+ * softer, more Notion/Attio-like corner, plus a resting elevation so a card
+ * reads as gently lifted off the page instead of a flat hairline-bordered box.
+ * Every consumer of `<Card>` picks this up for free — no per-module changes
+ * needed.
+ *
+ * Sprint 36 — Prominence pass (founder request: cards should feel deeper and
+ * more present). Resting elevation raised one calibrated step (`shadow-xs` →
+ * `shadow-sm`) and the ring firmed (`/10` → `/12`), so every card across the
+ * Dashboard and patient card sits more clearly off the page. `transition-shadow`
+ * is added here so interactive card usages can add a `hover:shadow-md` lift
+ * cheaply; static cards keep the calm resting elevation (no hover on the base,
+ * deliberately — a lift on a non-clickable info panel reads as a false
+ * affordance, and prominence must not depend on hover for touch users).
  */
 function Card({
   className,
@@ -20,7 +28,7 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-2xl bg-card py-(--card-spacing) text-sm text-card-foreground shadow-xs ring-1 ring-foreground/10 [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-2xl *:[img:last-child]:rounded-b-2xl",
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-2xl bg-card py-(--card-spacing) text-sm text-card-foreground shadow-sm ring-1 ring-foreground/12 transition-shadow duration-200 [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-2xl *:[img:last-child]:rounded-b-2xl",
         className
       )}
       {...props}
