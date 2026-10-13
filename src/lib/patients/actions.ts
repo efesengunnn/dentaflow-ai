@@ -343,6 +343,9 @@ export async function softDeletePatient(patientId: string): Promise<PatientActio
 
   if (appointmentsError) return { error: "Hasta silindi ancak randevuları silinemedi." }
 
+  // Treatment plans/items are cascaded by the database itself
+  // (patients_cascade_soft_delete_to_treatment_plans trigger, 2026-10-13).
+
   await supabase.from("patient_activities").insert({
     clinic_id: staffMember.clinicId,
     patient_id: patientId,
@@ -353,6 +356,8 @@ export async function softDeletePatient(patientId: string): Promise<PatientActio
 
   revalidatePath("/patients")
   revalidatePath("/appointments")
+  revalidatePath("/packages")
+  revalidatePath("/dashboard")
   redirect("/patients")
 }
 
