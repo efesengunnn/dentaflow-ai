@@ -120,3 +120,18 @@ export const PLAN_ENDING_SESSIONS_REMAINING = 1
 export const STANDALONE_TREATMENT_SESSION_COUNT = 1
 
 export const PATIENT_TREATMENT_PLAN_LIMIT = 10
+
+/**
+ * An item's line total: the unit price applies per charted tooth (3 teeth of
+ * Dolgu = 3× the Dolgu price). No teeth charted = whole-mouth/one-off, priced
+ * once. Session count never multiplies it (founder decision 2026-09-13).
+ * Shared by the wizard's live totals and the server actions so the preview
+ * and the stored `total_price` can never disagree.
+ */
+export function computeItemTotalPrice(
+  unitPrice: number | null | undefined,
+  toothNumbers: readonly number[] | null | undefined,
+): number | null {
+  if (unitPrice === null || unitPrice === undefined) return null
+  return unitPrice * Math.max(1, toothNumbers?.length ?? 0)
+}

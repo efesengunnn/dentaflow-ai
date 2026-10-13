@@ -6,7 +6,7 @@ import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
 import type { Database } from "@/lib/supabase/database.types"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
-import { TREATMENT_PAYMENT_ENTRY_TYPE_LABELS } from "@/lib/treatment-plans/constants"
+import { computeItemTotalPrice, TREATMENT_PAYMENT_ENTRY_TYPE_LABELS } from "@/lib/treatment-plans/constants"
 import {
   canCompleteSession,
   canCorrectOrVoidSession,
@@ -108,10 +108,9 @@ export async function fetchTreatmentPlanDetail(planId: string): Promise<Treatmen
  * used here instead: the plan is inserted first, then every item in one
  * batch `insert()` call (atomic among themselves — Postgres either inserts
  * all rows or none), and if that batch fails the plan is voided rather than
- * left as a phantom empty row. `total_price` equals the treatment's flat
- * price (`unitPrice`) — session count does NOT multiply it (founder decision
- * 2026-09-13: a treatment has one price regardless of how many visits it
- * takes). Computed here, never trusted from the client.
+ * left as a phantom empty row. `total_price` is `unitPrice` × charted tooth
+ * count (see `computeItemTotalPrice`) — session count does NOT multiply it
+ * (founder decision 2026-09-13). Computed here, never trusted from the client.
  */
 export async function createTreatmentPlan(values: TreatmentPlanFormValues): Promise<TreatmentPlanActionState> {
   const parsed = treatmentPlanFormSchema.safeParse(values)
@@ -153,7 +152,7 @@ export async function createTreatmentPlan(values: TreatmentPlanFormValues): Prom
     catalog_item_id: item.catalogItemId || null,
     session_count: item.sessionCount,
     unit_price: item.unitPrice ?? null,
-    total_price: item.unitPrice ?? null,
+    total_price: computeItemTotalPrice(item.unitPrice, item.toothNumbers),
     currency: item.currency,
     control_date: item.controlDate || null,
     tooth_numbers: item.toothNumbers && item.toothNumbers.length > 0 ? item.toothNumbers : null,
@@ -220,7 +219,7 @@ export async function updateTreatmentPlanItem(
 
   const { data: existing, error: existingError } = await supabase
     .from("treatment_plan_items")
-    .select("id, patient_id, revision_no")
+    .select("id, patient_id, revision_no, unit_price, total_price, tooth_numbers")
     .eq("id", parsed.data.itemId)
     .maybeSingle()
 
@@ -242,8 +241,17 @@ export async function updateTreatmentPlanItem(
     }
   }
 
-  // Flat price — session count does not multiply it (founder decision 2026-09-13).
-  const totalPrice = parsed.data.unitPrice ?? null
+  // Items created before per-tooth pricing stored a flat total even with
+  // several teeth charted (total_price === unit_price). Editing one keeps it
+  // flat so existing plans never change price retroactively.
+  const isLegacyFlatPriced =
+    (existing.tooth_numbers?.length ?? 0) > 1 &&
+    existing.unit_price !== null &&
+    existing.unit_price !== 0 &&
+    existing.total_price === existing.unit_price
+  const totalPrice = isLegacyFlatPriced
+    ? (parsed.data.unitPrice ?? null)
+    : computeItemTotalPrice(parsed.data.unitPrice, parsed.data.toothNumbers)
   const nextRevisionNo = existing.revision_no + 1
 
   const { data: updated, error: updateError } = await supabase

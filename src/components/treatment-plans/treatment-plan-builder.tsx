@@ -10,6 +10,7 @@ import { fetchCatalogForStaff } from "@/lib/treatment-catalog/actions"
 import type { CatalogItem } from "@/lib/treatment-catalog/queries"
 import type { AssignableStaff } from "@/lib/staff/queries"
 import { createTreatmentPlan } from "@/lib/treatment-plans/actions"
+import { computeItemTotalPrice } from "@/lib/treatment-plans/constants"
 import { treatmentPlanFormSchema, type TreatmentPlanItemInput } from "@/lib/treatment-plans/schema"
 import { TreatmentPlanCommittedSummary } from "./treatment-plan-committed-summary"
 import { TreatmentPlanPricingStep } from "./treatment-plan-pricing-step"
@@ -91,7 +92,7 @@ function TreatmentPlanBuilder({
   // single cross-currency sum would be meaningless (Sprint 31).
   const committedTotalsByCurrency = committedItems.reduce<Record<string, number>>((totals, item) => {
     const currency = item.currency ?? "TRY"
-    totals[currency] = (totals[currency] ?? 0) + (item.unitPrice ?? 0)
+    totals[currency] = (totals[currency] ?? 0) + (computeItemTotalPrice(item.unitPrice, item.toothNumbers) ?? 0)
     return totals
   }, {})
 
