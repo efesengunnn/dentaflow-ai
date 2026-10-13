@@ -4,6 +4,7 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { currencySymbol } from "@/lib/format/currency"
 import { formatToothList } from "@/lib/odontogram/fdi"
+import { computeItemTotalPrice } from "@/lib/treatment-plans/constants"
 import type { TreatmentPlanItemInput } from "@/lib/treatment-plans/schema"
 
 function formatMoney(amount: number, currency: string): string {
@@ -14,7 +15,7 @@ function formatMoney(amount: number, currency: string): string {
 function totalsByCurrency(items: TreatmentPlanItemInput[]): [string, number][] {
   const map = new Map<string, number>()
   for (const item of items) {
-    map.set(item.currency, (map.get(item.currency) ?? 0) + (item.unitPrice ?? 0))
+    map.set(item.currency, (map.get(item.currency) ?? 0) + (computeItemTotalPrice(item.unitPrice, item.toothNumbers) ?? 0))
   }
   return Array.from(map.entries()).sort((a, b) =>
     a[0] === "TRY" ? -1 : b[0] === "TRY" ? 1 : a[0].localeCompare(b[0]),
@@ -75,7 +76,7 @@ function TreatmentPlanSummaryStep({
                         {item.treatmentName} <span className="text-muted-foreground">· {item.sessionCount} seans</span>
                       </span>
                       <span className="shrink-0 font-medium tabular-nums">
-                        {formatMoney(item.unitPrice ?? 0, item.currency)}
+                        {formatMoney(computeItemTotalPrice(item.unitPrice, item.toothNumbers) ?? 0, item.currency)}
                       </span>
                     </div>
                     {item.toothNumbers && item.toothNumbers.length > 0 && (

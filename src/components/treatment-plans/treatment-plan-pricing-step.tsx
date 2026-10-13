@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select"
 import { CURRENCY_OPTIONS, currencySymbol, type CurrencyCode } from "@/lib/format/currency"
 import { dateStringToLocalDate, localDateToDateString } from "@/lib/format/date"
+import { computeItemTotalPrice } from "@/lib/treatment-plans/constants"
 import type { DraftTreatmentSelection } from "./treatment-plan-builder"
 
 function formatMoney(amount: number, currency: string): string {
@@ -125,7 +126,7 @@ function TreatmentPlanPricingStep({
   committedTotalsByCurrency: Record<string, number>
 }) {
   const roundTotalsByCurrency = selections.reduce<Record<string, number>>((totals, row) => {
-    totals[row.currency] = (totals[row.currency] ?? 0) + (row.unitPrice ?? 0)
+    totals[row.currency] = (totals[row.currency] ?? 0) + (computeItemTotalPrice(row.unitPrice, row.toothNumbers) ?? 0)
     return totals
   }, {})
 
@@ -141,25 +142,33 @@ function TreatmentPlanPricingStep({
     <div className="flex flex-col gap-4">
       <div>
         <h3 className="text-base font-medium">Fiyat</h3>
-        <p className="text-sm text-muted-foreground">Her tedavi için fiyat ve para birimini girin. Fiyat sabittir — seans sayısından etkilenmez.</p>
+        <p className="text-sm text-muted-foreground">Her tedavi için fiyat ve para birimini girin. Diş seçildiyse fiyat diş başınadır; seans sayısı fiyatı etkilemez.</p>
       </div>
 
       <div className="flex flex-col gap-2">
         {selections.map((row) => {
-          const total = row.unitPrice ?? 0
+          const total = computeItemTotalPrice(row.unitPrice, row.toothNumbers) ?? 0
+          const toothCount = row.toothNumbers.length
           return (
             <div key={row.key} className="flex flex-col gap-3 rounded-xl border border-border p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <span className="min-w-0 truncate font-medium">
                   {row.treatmentName} <span className="text-muted-foreground">· {row.sessionCount} seans</span>
                 </span>
-                <span className="shrink-0 font-semibold tabular-nums">{formatMoney(total, row.currency)}</span>
+                <span className="flex shrink-0 flex-col items-end">
+                  <span className="font-semibold tabular-nums">{formatMoney(total, row.currency)}</span>
+                  {toothCount > 1 && row.unitPrice !== undefined && (
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {toothCount} diş × {formatMoney(row.unitPrice, row.currency)}
+                    </span>
+                  )}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <MoneyInput
                   value={row.unitPrice}
                   onChange={(value) => onChangeUnitPrice(row.key, value)}
-                  placeholder="Fiyat (opsiyonel)"
+                  placeholder={toothCount > 1 ? "Diş başı fiyat (opsiyonel)" : "Fiyat (opsiyonel)"}
                   className="flex-1"
                 />
                 <Select value={row.currency} onValueChange={(value) => onChangeCurrency(row.key, value as CurrencyCode)}>
