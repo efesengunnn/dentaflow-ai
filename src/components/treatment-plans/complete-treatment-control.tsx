@@ -150,7 +150,7 @@ function CompleteTreatmentControl({
             <DialogTitle>{item.treatmentName}</DialogTitle>
             <DialogDescription>
               {remainingTeeth.length > 0
-                ? "İşlemi biten dişleri seçin. Kalan dişler takipte kalmaya devam eder."
+                ? "İşlemi biten dişlere dokunun. Seçmediğiniz dişler bekliyor olarak kalır."
                 : "Bu tedavinin tüm dişleri tamamlandı."}
             </DialogDescription>
           </DialogHeader>
@@ -158,7 +158,7 @@ function CompleteTreatmentControl({
           {canComplete && remainingTeeth.length > 0 && (
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">Kalan dişler</span>
+                <span className="text-sm font-medium">Hangi dişler tamamlandı?</span>
                 {remainingTeeth.length > 1 && (
                   <button
                     type="button"
