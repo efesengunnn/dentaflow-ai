@@ -29,22 +29,6 @@ export const TREATMENT_PLAN_STATUS_OPTIONS: { value: TreatmentLifecycleStatus; l
   ["active", "completed", "cancelled"] as const
 ).map((value) => ({ value, label: TREATMENT_PLAN_STATUS_LABELS[value] }))
 
-/** `treatment_sessions.status` — a session only ever exists once performed, so there is no "Planlandı" value here (unlike the legacy per-session label override on `treatment_lifecycle_status`). See docs/DATABASE.md#treatment-sessions. */
-export const TREATMENT_SESSION_STATUS_LABELS: Record<TreatmentSessionStatus, string> = {
-  completed: "Tamamlandı",
-  corrected: "Düzeltildi",
-  voided: "Geçersiz Kılındı",
-}
-
-export const TREATMENT_SESSION_STATUS_BADGE_VARIANT: Record<
-  TreatmentSessionStatus,
-  "secondary" | "default" | "warning" | "success" | "destructive"
-> = {
-  completed: "success",
-  corrected: "warning",
-  voided: "destructive",
-}
-
 export const TREATMENT_PAYMENT_METHOD_LABELS: Record<TreatmentPaymentMethod, string> = {
   cash: "Nakit",
   credit_card: "Kredi Kartı",
@@ -110,14 +94,6 @@ export const INACTIVE_PATIENT_THRESHOLD_DAYS = 30
 
 /** "Planı 1 seans kalanlar" — an active plan item with exactly this many sessions left. */
 export const PLAN_ENDING_SESSIONS_REMAINING = 1
-
-/**
- * Session count/date fields default a new one-off treatment plan to
- * "1 item, 1 session" — there is no separate form/mode for a single
- * session vs. a multi-session plan, per founder decision (Sprint 28): both
- * go through the same Tedavi Planı wizard.
- */
-export const STANDALONE_TREATMENT_SESSION_COUNT = 1
 
 export const PATIENT_TREATMENT_PLAN_LIMIT = 10
 

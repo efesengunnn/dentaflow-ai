@@ -1,14 +1,12 @@
 "use client"
 
-import { Minus, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
 
 import { Odontogram } from "@/components/shared/odontogram"
 import { Button } from "@/components/ui/button"
-import { Field, FieldError, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { MoneyInput } from "@/components/ui/money-input"
 import {
   Select,
@@ -29,30 +27,29 @@ import { updateTreatmentPlanItem } from "@/lib/treatment-plans/actions"
 import type { TreatmentPlanItemDetail } from "@/lib/treatment-plans/queries"
 
 /**
- * "Kalemi Düzenle" — sağlayıcı, seans sayısı, birim fiyat düzenlenebilir.
- * Sprint 28C: `updateTreatmentPlanItem` Server Action'ını çağırır — kaydedince
- * `revision_no` sunucuda artırılır (istemci sadece sonucu gösterir), en
- * güncel `completedSessions` sunucuda tekrar sorgulanıp altına düşürülmeye
- * karşı korunur.
+ * "Kalemi Düzenle" — hekim, birim fiyat ve dişler düzenlenebilir (seans
+ * sayısı 2026-10-14'ten beri sorulmuyor; ilerleme diş bazlı). Sprint 28C:
+ * `updateTreatmentPlanItem` Server Action'ını çağırır — kaydedince
+ * `revision_no` sunucuda artırılır, istemci sadece sonucu gösterir.
  */
 function TreatmentPlanItemEditSheet({
   item,
   providers,
   open,
   onOpenChange,
+  onSaved,
 }: {
   item: TreatmentPlanItemDetail
   providers: AssignableStaff[]
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSaved?: () => void
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [providerId, setProviderId] = useState(item.providerId)
-  const [sessionCount, setSessionCount] = useState(item.sessionCount)
   const [unitPrice, setUnitPrice] = useState<number | undefined>(item.unitPrice ?? undefined)
   const [toothNumbers, setToothNumbers] = useState<number[]>(item.toothNumbers)
-  const [sessionCountError, setSessionCountError] = useState<string | null>(null)
 
   // Sheet her açılışta (kapalıyken vazgeçilmiş bir taslak varsa dahi) veya
   // farklı bir kalem için açıldığında taslağı o kalemin güncel değerleriyle
@@ -64,39 +61,29 @@ function TreatmentPlanItemEditSheet({
     setPrevSyncKey(syncKey)
     if (syncKey !== null) {
       setProviderId(item.providerId)
-      setSessionCount(item.sessionCount)
       setUnitPrice(item.unitPrice ?? undefined)
       setToothNumbers(item.toothNumbers)
-      setSessionCountError(null)
     }
-  }
-
-  const minSessionCount = Math.max(1, item.completedSessions)
-
-  function setCount(raw: number) {
-    setSessionCount(Math.max(minSessionCount, Math.round(raw) || minSessionCount))
   }
 
   function handleSave() {
     if (isPending) return
-    setSessionCountError(null)
     startTransition(async () => {
       const result = await updateTreatmentPlanItem({
         itemId: item.id,
         providerId,
         treatmentName: item.treatmentName,
-        sessionCount,
         unitPrice,
         toothNumbers,
       })
       if (!result?.success) {
         toast.error(result?.error ?? "Kalem güncellenemedi.")
-        if (result?.fieldErrors?.sessionCount) setSessionCountError(result.fieldErrors.sessionCount)
         return
       }
       toast.success(`Kalem güncellendi — Değişiklik No: ${result.revisionNo}.`)
       onOpenChange(false)
       router.refresh()
+      onSaved?.()
     })
   }
 
@@ -122,40 +109,6 @@ function TreatmentPlanItemEditSheet({
                 ))}
               </SelectContent>
             </Select>
-          </Field>
-
-          <Field data-invalid={!!sessionCountError}>
-            <FieldLabel htmlFor="edit-item-session-count">Seans Sayısı</FieldLabel>
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label="Seans sayısını azalt"
-                disabled={sessionCount <= minSessionCount}
-                onClick={() => setCount(sessionCount - 1)}
-              >
-                <Minus className="size-4" />
-              </Button>
-              <Input
-                id="edit-item-session-count"
-                type="number"
-                min={minSessionCount}
-                value={sessionCount}
-                onChange={(event) => setCount(event.target.valueAsNumber)}
-                className="h-8 w-16 text-center"
-              />
-              <Button type="button" variant="outline" size="icon" aria-label="Seans sayısını artır" onClick={() => setCount(sessionCount + 1)}>
-                <Plus className="size-4" />
-              </Button>
-            </div>
-            {sessionCountError ? (
-              <FieldError>{sessionCountError}</FieldError>
-            ) : item.completedSessions > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {item.completedSessions} seans tamamlandı — bunun altına düşürülemez.
-              </p>
-            ) : null}
           </Field>
 
           <Field>

@@ -28,6 +28,7 @@ function TreatmentPlanDetailSheet({
   actor,
   open,
   onOpenChange,
+  onDataChanged,
 }: {
   plan: TreatmentPlanDetail
   isOwner: boolean
@@ -35,6 +36,8 @@ function TreatmentPlanDetailSheet({
   actor: TreatmentPlanActor
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** The sheet's `plan` was fetched on the client — reload it after any change made inside. */
+  onDataChanged: () => void
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -55,6 +58,7 @@ function TreatmentPlanDetailSheet({
             isOwner={isOwner}
             providers={providers}
             actor={actor}
+            onDataChanged={onDataChanged}
             onDeleted={() => onOpenChange(false)}
           />
         </div>

@@ -83,7 +83,13 @@ function TreatmentPlanList({
             </CollapsibleTrigger>
             <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
               <div className="border-t px-3 py-4 sm:px-4">
-                <TreatmentPlanDetailContent plan={plan} isOwner={isOwner} providers={providers} actor={actor} />
+                <TreatmentPlanDetailContent
+                  plan={plan}
+                  isOwner={isOwner}
+                  providers={providers}
+                  actor={actor}
+                  showFinancials={false}
+                />
               </div>
             </CollapsibleContent>
           </Card>

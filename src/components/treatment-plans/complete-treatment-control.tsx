@@ -43,10 +43,13 @@ function CompleteTreatmentControl({
   item,
   actor,
   appointmentId,
+  onChanged,
 }: {
   item: CompletableTreatmentItem
   actor: TreatmentPlanActor
   appointmentId?: string
+  /** Called after a successful complete/undo — lets a client-fetched host (the Dashboard plan sheet) reload its own copy. */
+  onChanged?: () => void
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -78,6 +81,7 @@ function CompleteTreatmentControl({
       )
       setDialogOpen(false)
       router.refresh()
+      onChanged?.()
     })
   }
 
@@ -90,6 +94,7 @@ function CompleteTreatmentControl({
       }
       toast.success("Tamamlandı işareti geri alındı.")
       router.refresh()
+      onChanged?.()
     })
   }
 

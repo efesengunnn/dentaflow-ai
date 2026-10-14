@@ -146,7 +146,7 @@ export async function createPatient(values: PatientFormValues): Promise<PatientA
         const planResult = await createTreatmentPlan({
           patientId: result.patient.id,
           planName: treatmentType,
-          items: [{ providerId: appointmentStaffId, treatmentName: treatmentType, sessionCount: 1, unitPrice: result.values.totalFee, currency: result.values.treatmentCurrency ?? "TRY" }],
+          items: [{ providerId: appointmentStaffId, treatmentName: treatmentType, unitPrice: result.values.totalFee, currency: result.values.treatmentCurrency ?? "TRY" }],
         })
         if (planResult && "error" in planResult) {
           planError = planResult.error

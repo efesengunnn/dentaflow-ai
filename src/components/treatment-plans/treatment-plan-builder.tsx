@@ -15,7 +15,6 @@ import { treatmentPlanFormSchema, type TreatmentPlanItemInput } from "@/lib/trea
 import { TreatmentPlanCommittedSummary } from "./treatment-plan-committed-summary"
 import { TreatmentPlanPricingStep } from "./treatment-plan-pricing-step"
 import { TreatmentPlanProviderStep } from "./treatment-plan-provider-step"
-import { TreatmentPlanSessionsStep } from "./treatment-plan-sessions-step"
 import { TreatmentPlanStepper, type TreatmentPlanStepperStep } from "./treatment-plan-stepper"
 import { TreatmentPlanSummaryStep } from "./treatment-plan-summary-step"
 import { TreatmentPlanTreatmentsStep } from "./treatment-plan-treatments-step"
@@ -24,7 +23,6 @@ export type DraftTreatmentSelection = {
   key: string
   treatmentName: string
   isCustom: boolean
-  sessionCount: number
   unitPrice: number | undefined
   /** Sprint 31 — carried from the catalog item, or chosen (custom) in the pricing step. */
   currency: CurrencyCode
@@ -36,10 +34,9 @@ export type DraftTreatmentSelection = {
 const WIZARD_STEPS: TreatmentPlanStepperStep[] = [
   { number: 1, label: "Hekim Seç" },
   { number: 2, label: "Tedavileri Seç" },
-  { number: 3, label: "Seans Sayısı" },
-  { number: 4, label: "Fiyat" },
-  { number: 5, label: "Başka Hekim" },
-  { number: 6, label: "Özet ve Kaydet" },
+  { number: 3, label: "Fiyat" },
+  { number: 4, label: "Başka Hekim" },
+  { number: 5, label: "Özet ve Kaydet" },
 ]
 
 function createId(): string {
@@ -57,10 +54,10 @@ function createId(): string {
  *
  * Adım 2 artık gerçek `staff_treatment_catalog_items` verisini kullanır
  * (`fetchCatalogForStaff`) — sabit `MOCK_CATALOG` tamamen kaldırıldı (Sprint
- * 28C'deki geçici karar, founder talimatıyla geri alındı). Seans sayısı hiçbir
- * zaman varsayılan önermez, hep elle girilir (founder kararı: "Varsayılan seans
- * sayısı İSTEMİYORUM"). Birim fiyat ise katalogdaki `default_price`'tan Adım
- * 4'e otomatik gelir ve orada değiştirilebilir (founder talimatı 2026-09-13).
+ * 28C'deki geçici karar, founder talimatıyla geri alındı). Seans sayısı adımı
+ * 2026-10-14'te kaldırıldı — ilerleme diş bazlı. Birim fiyat katalogdaki
+ * `default_price`'tan Adım 3'e otomatik gelir ve orada değiştirilebilir
+ * (founder talimatı 2026-09-13).
  */
 function TreatmentPlanBuilder({
   patientId,
@@ -119,8 +116,7 @@ function TreatmentPlanBuilder({
           key: createId(),
           treatmentName,
           isCustom: false,
-          sessionCount: 1,
-          // Katalog fiyatı Adım 4'e otomatik gelir; kullanıcı orada değiştirebilir
+          // Katalog fiyatı Adım 3'e otomatik gelir; kullanıcı orada değiştirebilir
           // (founder talimatı 2026-09-13). `null` = "Belirlenmedi" → boş bırakılır.
           unitPrice: defaultPrice ?? undefined,
           currency: (currency as CurrencyCode) ?? "TRY",
@@ -134,16 +130,12 @@ function TreatmentPlanBuilder({
   function handleAddCustomTreatment(name: string) {
     setDraftTreatments((prev) => [
       ...prev,
-      { key: createId(), treatmentName: name, isCustom: true, sessionCount: 1, unitPrice: undefined, currency: "TRY", controlDate: undefined, toothNumbers: [] },
+      { key: createId(), treatmentName: name, isCustom: true, unitPrice: undefined, currency: "TRY", controlDate: undefined, toothNumbers: [] },
     ])
   }
 
   function handleRemoveCustomTreatment(key: string) {
     setDraftTreatments((prev) => prev.filter((row) => row.key !== key))
-  }
-
-  function handleChangeSessionCount(key: string, count: number) {
-    setDraftTreatments((prev) => prev.map((row) => (row.key === key ? { ...row, sessionCount: count } : row)))
   }
 
   function handleChangeUnitPrice(key: string, price: number | undefined) {
@@ -162,13 +154,12 @@ function TreatmentPlanBuilder({
     setDraftTreatments((prev) => prev.map((row) => (row.key === key ? { ...row, toothNumbers } : row)))
   }
 
-  /** Mevcut turu (Adım 1-4'te toplanan sağlayıcı + tedaviler) kalıcı `committedItems`'a taşır ve taslağı sıfırlar. */
+  /** Mevcut turu (Adım 1-3'te toplanan sağlayıcı + tedaviler) kalıcı `committedItems`'a taşır ve taslağı sıfırlar. */
   function commitDraftRound() {
     if (!draftProvider || draftTreatments.length === 0) return
     const newItems: TreatmentPlanItemInput[] = draftTreatments.map((row) => ({
       providerId: draftProvider.id,
       treatmentName: row.treatmentName,
-      sessionCount: row.sessionCount,
       unitPrice: row.unitPrice,
       currency: row.currency,
       controlDate: row.controlDate,
@@ -189,14 +180,13 @@ function TreatmentPlanBuilder({
 
   function handleContinueToSummary() {
     commitDraftRound()
-    setStep(6)
+    setStep(5)
   }
 
   function canGoNext(): boolean {
     if (step === 1) return draftProvider !== null
     if (step === 2) return draftTreatments.length > 0
-    if (step === 3) return draftTreatments.every((row) => row.sessionCount >= 1)
-    if (step === 4) return true
+    if (step === 3) return true
     return false
   }
 
@@ -229,7 +219,7 @@ function TreatmentPlanBuilder({
         <p className="text-xs text-muted-foreground">{currentStepLabel}</p>
       </div>
 
-      {step < 6 && <TreatmentPlanCommittedSummary items={committedItems} providerNameById={providerNameById} />}
+      {step < 5 && <TreatmentPlanCommittedSummary items={committedItems} providerNameById={providerNameById} />}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:gap-6">
         <TreatmentPlanStepper steps={WIZARD_STEPS} currentStep={step} className="sm:w-36" />
@@ -260,9 +250,6 @@ function TreatmentPlanBuilder({
             />
           )}
           {step === 3 && (
-            <TreatmentPlanSessionsStep selections={draftTreatments} onChangeSessionCount={handleChangeSessionCount} />
-          )}
-          {step === 4 && (
             <TreatmentPlanPricingStep
               selections={draftTreatments}
               onChangeUnitPrice={handleChangeUnitPrice}
@@ -271,7 +258,7 @@ function TreatmentPlanBuilder({
               committedTotalsByCurrency={committedTotalsByCurrency}
             />
           )}
-          {step === 5 && (
+          {step === 4 && (
             <div className="flex flex-col gap-4">
               <div>
                 <h3 className="text-base font-medium">Başka Hekim Ekle</h3>
@@ -290,7 +277,7 @@ function TreatmentPlanBuilder({
               </div>
             </div>
           )}
-          {step === 6 && (
+          {step === 5 && (
             <TreatmentPlanSummaryStep
               items={committedItems}
               providerNameById={providerNameById}
@@ -311,7 +298,7 @@ function TreatmentPlanBuilder({
         >
           Geri
         </Button>
-        {step === 5 ? null : step < 6 ? (
+        {step === 4 ? null : step < 5 ? (
           <Button type="button" onClick={() => setStep((prev) => prev + 1)} disabled={!canGoNext()}>
             İleri
           </Button>

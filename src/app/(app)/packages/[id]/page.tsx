@@ -10,9 +10,11 @@ import { PageHeader } from "@/components/shared/page-header"
 import { Separator } from "@/components/ui/separator"
 import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
 import { getPatientById } from "@/lib/patients/queries"
-import { TREATMENT_SESSION_STATUS_LABELS } from "@/lib/treatment-plans/constants"
+import { formatToothList } from "@/lib/odontogram/fdi"
+import { deriveItemProgress } from "@/lib/treatment-plans/constants"
 import { getTreatmentPlanDetail, type TreatmentPlanItemDetail } from "@/lib/treatment-plans/queries"
-import { TreatmentPlanStatusBadge } from "@/components/treatment-plans/treatment-plan-status-badge"
+import { TreatmentPlanProgressBadge } from "@/components/treatment-plans/treatment-plan-status-badge"
+import { TreatmentProgressBadge } from "@/components/treatment-plans/treatment-progress-badge"
 
 type PackageDetailPageProps = {
   params: Promise<{ id: string }>
@@ -69,7 +71,7 @@ export default async function PackageDetailPage({ params }: PackageDetailPagePro
       />
 
       <div className="flex items-center gap-2">
-        <TreatmentPlanStatusBadge status={plan.status} />
+        <TreatmentPlanProgressBadge plan={plan} />
       </div>
 
       <div className="flex flex-col gap-6">
@@ -82,27 +84,27 @@ export default async function PackageDetailPage({ params }: PackageDetailPagePro
                 {providerItems.map((item) => (
                   <div key={item.id} className="flex flex-col gap-1.5 border-t pt-3 first:border-t-0 first:pt-0">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="font-medium">
-                        {item.treatmentName} <span className="text-muted-foreground">×{item.sessionCount}</span>
+                      <span className="flex min-w-0 flex-wrap items-center gap-2 font-medium">
+                        {item.treatmentName}
+                        <TreatmentProgressBadge progress={deriveItemProgress(item)} />
                       </span>
                       <span className="font-medium tabular-nums">{formatMoney(item.totalPrice)}</span>
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
                       <span>Birim fiyat: {formatMoney(item.unitPrice)}</span>
-                      <span>
-                        Seans: {item.completedSessions}/{item.sessionCount} tamamlandı
-                      </span>
+                      {item.toothNumbers.length > 0 && (
+                        <span className="tabular-nums">Dişler: {formatToothList(item.toothNumbers)}</span>
+                      )}
                       {item.controlDate && <span>Kontrol Günü: {formatDate(item.controlDate)}</span>}
                     </div>
-                    {item.sessions.length > 0 && (
+                    {item.completions.length > 0 && (
                       <div className="mt-1 flex flex-col gap-0.5 pl-3 text-xs text-muted-foreground">
-                        {item.sessions.map((session) => (
-                          <div key={session.id} className="flex items-center justify-between gap-3">
-                            <span>
-                              {session.sessionNumber}. seans — {formatDate(session.performedAt)}
-                              {session.controlDate && ` · Kontrol: ${formatDate(session.controlDate)}`}
+                        {item.completions.map((completion) => (
+                          <div key={completion.sessionId} className="flex items-center justify-between gap-3">
+                            <span className="tabular-nums">
+                              {completion.toothNumbers.length > 0 ? `Diş ${formatToothList(completion.toothNumbers)}` : "Tedavi"}
                             </span>
-                            <span>{TREATMENT_SESSION_STATUS_LABELS[session.status]}</span>
+                            <span>{formatDate(completion.performedAt)} tamamlandı</span>
                           </div>
                         ))}
                       </div>

@@ -26,27 +26,38 @@ import { TreatmentPlanItemRow } from "./treatment-plan-item-row"
 import { TreatmentPlanPaymentCorrectionSheet } from "./treatment-plan-payment-correction-sheet"
 
 /**
- * A plan's full detail body — treatment rows, totals, payments, delete.
- * Rendered inline under the plan on the patient card (2026-10-14) and inside
- * the Dashboard drill-down's `TreatmentPlanDetailSheet`, so both stay
- * identical. Data comes in fully loaded via `plan`; mutations refresh the
- * route rather than keeping local copies.
+ * A plan's detail body — treatment rows, then (optionally) totals and
+ * payments, then delete. Rendered inline under the plan on the patient card
+ * (2026-10-14, `showFinancials={false}`: the card's own "Ödemeler" section
+ * already shows money) and inside the Dashboard drill-down's
+ * `TreatmentPlanDetailSheet`. Mutations refresh the route; `onDataChanged`
+ * additionally lets a host that fetched `plan` on the client (the Dashboard
+ * sheet) reload its copy, which a route refresh alone would not update.
  */
 function TreatmentPlanDetailContent({
   plan,
   isOwner,
   providers,
   actor,
+  showFinancials = true,
+  onDataChanged,
   onDeleted,
 }: {
   plan: TreatmentPlanDetail
   isOwner: boolean
   providers: AssignableStaff[]
   actor: TreatmentPlanActor
+  showFinancials?: boolean
+  onDataChanged?: () => void
   onDeleted?: () => void
 }) {
   const router = useRouter()
   const [editingItem, setEditingItem] = useState<TreatmentPlanItemDetail | null>(null)
+
+  function handleChanged() {
+    router.refresh()
+    onDataChanged?.()
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -58,73 +69,78 @@ function TreatmentPlanDetailContent({
             isOwner={isOwner}
             actor={actor}
             onEdit={() => setEditingItem(item)}
+            onDataChanged={onDataChanged}
           />
         ))}
       </div>
 
-      <InfoGrid
-        items={
-          plan.currencyTotals.length === 0
-            ? [
-                { label: "Toplam", value: "Belirlenmedi" },
-                { label: "Ödenen", value: formatCurrency(0, "TRY") },
-                { label: "Kalan", value: "Belirlenmedi" },
-              ]
-            : plan.currencyTotals.flatMap((entry) => {
-                const suffix = plan.currencyTotals.length > 1 ? ` (${currencySymbol(entry.currency)})` : ""
-                return [
-                  { label: `Toplam${suffix}`, value: entry.total === null ? "Belirlenmedi" : formatCurrency(entry.total, entry.currency) },
-                  { label: `Ödenen${suffix}`, value: formatCurrency(entry.paid, entry.currency) },
-                  { label: `Kalan${suffix}`, value: entry.remaining === null ? "Belirlenmedi" : formatCurrency(entry.remaining, entry.currency) },
-                ]
-              })
-        }
-      />
+      {showFinancials && (
+        <>
+          <InfoGrid
+            items={
+              plan.currencyTotals.length === 0
+                ? [
+                    { label: "Toplam", value: "Belirlenmedi" },
+                    { label: "Ödenen", value: formatCurrency(0, "TRY") },
+                    { label: "Kalan", value: "Belirlenmedi" },
+                  ]
+                : plan.currencyTotals.flatMap((entry) => {
+                    const suffix = plan.currencyTotals.length > 1 ? ` (${currencySymbol(entry.currency)})` : ""
+                    return [
+                      { label: `Toplam${suffix}`, value: entry.total === null ? "Belirlenmedi" : formatCurrency(entry.total, entry.currency) },
+                      { label: `Ödenen${suffix}`, value: formatCurrency(entry.paid, entry.currency) },
+                      { label: `Kalan${suffix}`, value: entry.remaining === null ? "Belirlenmedi" : formatCurrency(entry.remaining, entry.currency) },
+                    ]
+                  })
+            }
+          />
 
-      <Separator />
+          <Separator />
 
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium">Ödemeler</span>
-          {canRecordPayment(actor) && (
-            <AddTreatmentPlanPaymentSheet
-              treatmentPlanId={plan.id}
-              currencyBalances={plan.currencyTotals.map((entry) => ({
-                currency: entry.currency,
-                remaining: entry.remaining,
-              }))}
-              onSuccess={() => router.refresh()}
-            />
-          )}
-        </div>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">Ödemeler</span>
+              {canRecordPayment(actor) && (
+                <AddTreatmentPlanPaymentSheet
+                  treatmentPlanId={plan.id}
+                  currencyBalances={plan.currencyTotals.map((entry) => ({
+                    currency: entry.currency,
+                    remaining: entry.remaining,
+                  }))}
+                  onSuccess={handleChanged}
+                />
+              )}
+            </div>
 
-        {plan.payments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Henüz ödeme kaydı yok.</p>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            {plan.payments.map((payment) => (
-              <div key={payment.id} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span className="min-w-0 truncate">
-                  {format(new Date(payment.paidAt), "d MMM yyyy", { locale: tr })} ·{" "}
-                  {formatCurrency(payment.amount, payment.currency)} · {TREATMENT_PAYMENT_METHOD_LABELS[payment.method]}
-                </span>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {payment.entryType !== "payment" && (
-                    <Badge variant="warning">{payment.entryType === "refund" ? "İade" : "Düzeltme"}</Badge>
-                  )}
-                  {payment.entryType === "payment" && canCorrectPayment(actor) && (
-                    <TreatmentPlanPaymentCorrectionSheet
-                      treatmentPlanId={plan.id}
-                      payment={payment}
-                      onSuccess={() => router.refresh()}
-                    />
-                  )}
-                </div>
+            {plan.payments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Henüz ödeme kaydı yok.</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {plan.payments.map((payment) => (
+                  <div key={payment.id} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span className="min-w-0 truncate">
+                      {format(new Date(payment.paidAt), "d MMM yyyy", { locale: tr })} ·{" "}
+                      {formatCurrency(payment.amount, payment.currency)} · {TREATMENT_PAYMENT_METHOD_LABELS[payment.method]}
+                    </span>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {payment.entryType !== "payment" && (
+                        <Badge variant="warning">{payment.entryType === "refund" ? "İade" : "Düzeltme"}</Badge>
+                      )}
+                      {payment.entryType === "payment" && canCorrectPayment(actor) && (
+                        <TreatmentPlanPaymentCorrectionSheet
+                          treatmentPlanId={plan.id}
+                          payment={payment}
+                          onSuccess={handleChanged}
+                        />
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
 
       {canDeleteTreatmentPlan(actor) && (
         <>
@@ -159,6 +175,7 @@ function TreatmentPlanDetailContent({
           onOpenChange={(nextOpen) => {
             if (!nextOpen) setEditingItem(null)
           }}
+          onSaved={onDataChanged}
         />
       )}
     </div>

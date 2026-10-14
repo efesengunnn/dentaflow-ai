@@ -23,7 +23,7 @@ function totalsByCurrency(items: TreatmentPlanItemInput[]): [string, number][] {
 }
 
 /**
- * Adım 6 — "Özet": sağlayıcıya göre gruplu kalem listesi + sağlayıcı alt
+ * Adım 5 — "Özet": sağlayıcıya göre gruplu kalem listesi + sağlayıcı alt
  * toplamı, Genel Toplam, plan adı (opsiyonel). Sprint 30 — `isOwner` true
  * iken ayrıca sağlayıcı bazlı ciro dağılımı gösterilir (aynı "owner-only,
  * sağlayıcının kendisi bile göremez" kuralı `provider_share_amount`'ın zaten
@@ -72,9 +72,7 @@ function TreatmentPlanSummaryStep({
                 {providerItems.map((item, index) => (
                   <div key={`${item.treatmentName}-${index}`} className="flex flex-col gap-0.5">
                     <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="min-w-0 truncate">
-                        {item.treatmentName} <span className="text-muted-foreground">· {item.sessionCount} seans</span>
-                      </span>
+                      <span className="min-w-0 truncate">{item.treatmentName}</span>
                       <span className="shrink-0 font-medium tabular-nums">
                         {formatMoney(computeItemTotalPrice(item.unitPrice, item.toothNumbers) ?? 0, item.currency)}
                       </span>

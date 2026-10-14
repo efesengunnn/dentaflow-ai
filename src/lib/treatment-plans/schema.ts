@@ -27,12 +27,11 @@ const TREATMENT_PAYMENT_CORRECTION_TYPE_VALUES = ["refund", "adjustment"] as con
  * `null` never a fake `0`, notes/description length caps).
  */
 
-/** One line item within a Tedavi Planı wizard submission — one provider, one treatment, a session count and optional price. */
+/** One line item within a Tedavi Planı wizard submission — one provider, one treatment, optional teeth and price. No session count: progress is tooth-based since 2026-10-14, so new items keep the DB default `session_count = 1`. */
 export const treatmentPlanItemInputSchema = z.object({
   providerId: z.string().min(1, "Hekim seçin."),
   treatmentName: z.string().trim().min(1, "Tedavi adını girin.").max(120, "Tedavi adı 120 karakteri geçemez."),
   catalogItemId: z.string().optional(),
-  sessionCount: z.number().int().min(1, "En az 1 seans olmalı.").max(999, "Geçerli bir seans sayısı girin."),
   /** Optional — a phone-sold plan's price may not be negotiated yet. `undefined` renders as "Belirlenmedi", never a fake `0`. */
   unitPrice: z.number().min(0, "Fiyat negatif olamaz.").optional(),
   /** Sprint 31 — item-level currency (TRY/EUR); a plan may mix currencies. Carried from the catalog item, or chosen for a custom treatment. Required so callers always state it explicitly. */
@@ -45,7 +44,7 @@ export const treatmentPlanItemInputSchema = z.object({
 
 export type TreatmentPlanItemInput = z.infer<typeof treatmentPlanItemInputSchema>
 
-/** "Yeni Tedavi Planı" wizard final submit — one or more providers, one or more items each. A single-session single-procedure sale is the same shape with exactly one item, `sessionCount: 1` — no separate form/mode. */
+/** "Yeni Tedavi Planı" wizard final submit — one or more providers, one or more items each. A single-procedure sale is the same shape with exactly one item — no separate form/mode. */
 export const treatmentPlanFormSchema = z.object({
   patientId: z.string().min(1, "Hasta seçin."),
   planName: z.string().trim().min(1, "Plan adını girin.").max(160, "Plan adı 160 karakteri geçemez."),
@@ -60,12 +59,11 @@ export const treatmentPlanFormDefaults: TreatmentPlanFormValues = {
   items: [],
 }
 
-/** "Kalemi Düzenle" — revising an existing `treatment_plan_items` row. Every structural change (session count, provider, price) increments `revision_no` in the Server Action, never here. */
+/** "Kalemi Düzenle" — revising an existing `treatment_plan_items` row. Every structural change (provider, price, teeth) increments `revision_no` in the Server Action, never here. */
 export const reviseTreatmentPlanItemSchema = z.object({
   itemId: z.string().min(1),
   providerId: z.string().min(1, "Hekim seçin."),
   treatmentName: z.string().trim().min(1, "Tedavi adını girin.").max(120, "Tedavi adı 120 karakteri geçemez."),
-  sessionCount: z.number().int().min(1, "En az 1 seans olmalı.").max(999, "Geçerli bir seans sayısı girin."),
   unitPrice: z.number().min(0, "Fiyat negatif olamaz.").optional(),
   /** Sprint 33 — revising which teeth an existing item targets (optional; empty = whole-mouth). */
   toothNumbers: toothNumbersSchema,

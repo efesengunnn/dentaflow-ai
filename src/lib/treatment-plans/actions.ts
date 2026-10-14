@@ -141,7 +141,6 @@ export async function createTreatmentPlan(values: TreatmentPlanFormValues): Prom
     provider_id: item.providerId,
     treatment_name: item.treatmentName,
     catalog_item_id: item.catalogItemId || null,
-    session_count: item.sessionCount,
     unit_price: item.unitPrice ?? null,
     total_price: computeItemTotalPrice(item.unitPrice, item.toothNumbers),
     currency: item.currency,
@@ -183,9 +182,9 @@ export async function createTreatmentPlan(values: TreatmentPlanFormValues): Prom
 }
 
 /**
- * "Kalemi Düzenle" — Kaydet action. `session_count` can never drop below
- * the item's completed session count (queried fresh here, never trusted
- * from the client). `revision_no` increments on every save. Optimistic
+ * "Kalemi Düzenle" — Kaydet action. `session_count` is never touched (no
+ * longer asked since 2026-10-14; legacy items keep theirs, which the status
+ * trigger still honours). `revision_no` increments on every save. Optimistic
  * concurrency: the UPDATE's WHERE clause also pins `revision_no` to the
  * value this call read, so two concurrent saves on the same stale item
  * can't silently clobber each other — the second one gets a clear "az önce
@@ -216,22 +215,6 @@ export async function updateTreatmentPlanItem(
 
   if (existingError || !existing) return { error: "Tedavi kalemi bulunamadı." }
 
-  const { count: completedCount, error: countError } = await supabase
-    .from("treatment_sessions")
-    .select("id", { count: "exact", head: true })
-    .eq("treatment_plan_item_id", existing.id)
-    .eq("status", "completed")
-
-  if (countError) return { error: "Tamamlanan seans sayısı kontrol edilemedi." }
-
-  const completedSessions = countError ? 0 : (completedCount ?? 0)
-  if (parsed.data.sessionCount < completedSessions) {
-    return {
-      error: `Bu kalemde ${completedSessions} seans tamamlanmış — seans sayısı bunun altına düşürülemez.`,
-      fieldErrors: { sessionCount: `En az ${completedSessions} olmalı.` },
-    }
-  }
-
   // Items created before per-tooth pricing stored a flat total even with
   // several teeth charted (total_price === unit_price). Editing one keeps it
   // flat so existing plans never change price retroactively.
@@ -250,7 +233,6 @@ export async function updateTreatmentPlanItem(
     .update({
       provider_id: parsed.data.providerId,
       treatment_name: parsed.data.treatmentName,
-      session_count: parsed.data.sessionCount,
       unit_price: parsed.data.unitPrice ?? null,
       total_price: totalPrice,
       tooth_numbers: parsed.data.toothNumbers && parsed.data.toothNumbers.length > 0 ? parsed.data.toothNumbers : null,
@@ -273,7 +255,7 @@ export async function updateTreatmentPlanItem(
     // `plan_item_updated` has no matching enum value — reuses `series_updated`,
     // same mapping rationale as `createTreatmentPlan` above.
     activity_type: "series_updated",
-    description: `Tedavi kalemi güncellendi (Değişiklik ${nextRevisionNo}): ${parsed.data.treatmentName}, ${parsed.data.sessionCount} seans.`,
+    description: `Tedavi kalemi güncellendi (Değişiklik ${nextRevisionNo}): ${parsed.data.treatmentName}.`,
     created_by: staffMember.userId,
   }
   await supabase.from("treatment_activities").insert(activity)

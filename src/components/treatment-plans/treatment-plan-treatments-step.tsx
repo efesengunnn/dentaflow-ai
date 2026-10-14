@@ -20,9 +20,8 @@ import type { DraftTreatmentSelection } from "./treatment-plan-builder"
  * Adım 2 — "Tedavileri Seç": arama, checkbox, ve "Özel tedavi ekle". Sprint
  * 30 — gerçek `staff_treatment_catalog_items` verisini kullanır (Sprint
  * 28C'deki geçici `MOCK_CATALOG` kararı geri alındı, founder talimatı):
- * `catalog` artık seçili sağlayıcıya özel, gerçek bir liste. Hiçbir
- * varsayılan seans sayısı önerilmez — seçilince her zaman 1 seansla başlar,
- * Adım 3'te elle değiştirilir (founder kararı).
+ * `catalog` artık seçili sağlayıcıya özel, gerçek bir liste. Seans sayısı
+ * sorulmaz (2026-10-14) — ilerleme diş bazlı takip edilir.
  *
  * Sprint 33 — seçilen her tedavinin altında, tıklanınca açılan bir "Diş
  * Şeması" (Odontogram) accordion'u yer alır (founder kararı: diş eşleştirme

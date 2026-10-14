@@ -152,7 +152,6 @@ async function createHiddenPlanForStandaloneTreatment(
       {
         providerId: data.staffId,
         treatmentName: data.standaloneTreatmentName,
-        sessionCount: 1,
         unitPrice: data.standalonePrice,
         currency: data.standaloneCurrency,
         controlDate: data.controlDate,

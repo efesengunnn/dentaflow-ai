@@ -57,7 +57,7 @@ function TreatmentPlanCommittedSummary({
               {providerItems.map((item, index) => (
                 <div key={`${item.treatmentName}-${index}`} className="flex items-center justify-between gap-3 pl-3 text-sm">
                   <span className="min-w-0 truncate text-muted-foreground">
-                    {item.treatmentName} <span>· {item.sessionCount} seans</span>
+                    {item.treatmentName}
                     {item.toothNumbers && item.toothNumbers.length > 0 && (
                       <span className="tabular-nums"> · Diş {formatToothList(item.toothNumbers)}</span>
                     )}

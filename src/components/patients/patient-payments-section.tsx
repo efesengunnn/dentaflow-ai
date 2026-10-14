@@ -1,6 +1,7 @@
 import { Wallet } from "lucide-react"
 
 import { EmptyState } from "@/components/shared/empty-state"
+import { TreatmentPlanPaymentCorrectionSheet } from "@/components/treatment-plans/treatment-plan-payment-correction-sheet"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/lib/format/currency"
 import { TREATMENT_PAYMENT_METHOD_LABELS } from "@/lib/treatment-plans/constants"
@@ -35,8 +36,18 @@ function rollupByCurrency(plans: TreatmentPlanDetail[]): CurrencyRollup[] {
  *
  * Sprint 31 — totals are rolled up per currency (a patient may have both TRY
  * and EUR treatments); TRY and EUR are never summed together.
+ *
+ * 2026-10-14 — the per-plan payment list was dropped from the inline plan
+ * detail (it duplicated this section), so İade/Düzeltme now lives on these
+ * rows instead.
  */
-function PatientPaymentsSection({ treatmentPlans }: { treatmentPlans: TreatmentPlanDetail[] }) {
+function PatientPaymentsSection({
+  treatmentPlans,
+  canCorrectPayments,
+}: {
+  treatmentPlans: TreatmentPlanDetail[]
+  canCorrectPayments: boolean
+}) {
   const visiblePlans = treatmentPlans.filter((plan) => plan.status !== "voided")
   const rollups = rollupByCurrency(visiblePlans)
   const displayRollups = rollups.length > 0 ? rollups : [{ currency: "TRY", debt: 0, paid: 0, remaining: 0 }]
@@ -89,9 +100,14 @@ function PatientPaymentsSection({ treatmentPlans }: { treatmentPlans: TreatmentP
                   </Badge>
                 )}
               </div>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {new Date(payment.paidAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}
-              </span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">
+                  {new Date(payment.paidAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}
+                </span>
+                {canCorrectPayments && payment.entryType === "payment" && (
+                  <TreatmentPlanPaymentCorrectionSheet treatmentPlanId={payment.treatmentPlanId} payment={payment} />
+                )}
+              </div>
             </div>
           ))}
         </div>

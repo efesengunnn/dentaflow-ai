@@ -58,12 +58,14 @@ function TreatmentItemRow({
   appointmentId,
   extraInfo,
   actions,
+  onChanged,
 }: {
   item: TreatmentRowItem
   actor: TreatmentPlanActor
   appointmentId?: string
   extraInfo?: ReactNode
   actions?: ReactNode
+  onChanged?: () => void
 }) {
   const progress = deriveItemProgress(item)
   const progressLabel =
@@ -93,7 +95,7 @@ function TreatmentItemRow({
             {item.totalPrice === null ? "Belirlenmedi" : formatCurrency(item.totalPrice, item.currency)}
           </span>
           <div className="flex items-center gap-1">
-            <CompleteTreatmentControl item={item} actor={actor} appointmentId={appointmentId} />
+            <CompleteTreatmentControl item={item} actor={actor} appointmentId={appointmentId} onChanged={onChanged} />
             {actions}
           </div>
         </div>
@@ -108,11 +110,13 @@ function TreatmentPlanItemRow({
   isOwner,
   actor,
   onEdit,
+  onDataChanged,
 }: {
   item: TreatmentPlanItemDetail
   isOwner: boolean
   actor: TreatmentPlanActor
   onEdit: () => void
+  onDataChanged?: () => void
 }) {
   const router = useRouter()
 
@@ -120,6 +124,7 @@ function TreatmentPlanItemRow({
     <TreatmentItemRow
       item={item}
       actor={actor}
+      onChanged={onDataChanged}
       extraInfo={
         isOwner && item.providerShareAmount != null
           ? ` · Hekim payı ${formatCurrency(item.providerShareAmount, item.currency)}`
@@ -147,6 +152,7 @@ function TreatmentPlanItemRow({
                 const result = await deleteTreatmentPlanItem({ itemId: item.id, reason })
                 if (result?.success) {
                   router.refresh()
+                  onDataChanged?.()
                   return undefined
                 }
                 return { error: result?.error ?? "Tedavi kalemi silinemedi." }
