@@ -25,8 +25,21 @@ import { TreatmentPlanItemEditSheet } from "./treatment-plan-item-edit-sheet"
 import { TreatmentPlanItemRow } from "./treatment-plan-item-row"
 import { TreatmentPlanPaymentCorrectionSheet } from "./treatment-plan-payment-correction-sheet"
 
+/** Sum of the listed items' prices per currency (TRY first) — TRY and EUR are never added together. */
+function itemTotalsByCurrency(items: TreatmentPlanItemDetail[]): { currency: string; total: number }[] {
+  const totals = new Map<string, number>()
+  for (const item of items) {
+    if (item.totalPrice === null) continue
+    totals.set(item.currency, (totals.get(item.currency) ?? 0) + item.totalPrice)
+  }
+  return Array.from(totals, ([currency, total]) => ({ currency, total })).sort((a, b) =>
+    a.currency === "TRY" ? -1 : b.currency === "TRY" ? 1 : a.currency.localeCompare(b.currency),
+  )
+}
+
 /**
- * A plan's detail body — treatment rows, then (optionally) totals and
+ * A plan's detail body — treatment rows (with a per-currency "Toplam" line
+ * when the money block is hidden), then (optionally) totals and
  * payments, then delete. Rendered inline under the plan on the patient card
  * (2026-10-14, `showFinancials={false}`: the card's own "Ödemeler" section
  * already shows money) and inside the Dashboard drill-down's
@@ -53,6 +66,7 @@ function TreatmentPlanDetailContent({
 }) {
   const router = useRouter()
   const [editingItem, setEditingItem] = useState<TreatmentPlanItemDetail | null>(null)
+  const itemTotals = itemTotalsByCurrency(plan.items)
 
   function handleChanged() {
     router.refresh()
@@ -72,6 +86,22 @@ function TreatmentPlanDetailContent({
             onDataChanged={onDataChanged}
           />
         ))}
+        {!showFinancials && (
+          <div className="flex items-start justify-between gap-3 border-t pt-3 pr-3 pl-4">
+            <span className="text-sm font-medium text-muted-foreground">Toplam</span>
+            <div className="flex flex-col items-end gap-0.5">
+              {itemTotals.length === 0 ? (
+                <span className="font-semibold">Belirlenmedi</span>
+              ) : (
+                itemTotals.map((entry) => (
+                  <span key={entry.currency} className="text-base font-semibold tabular-nums">
+                    {formatCurrency(entry.total, entry.currency)}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {showFinancials && (
