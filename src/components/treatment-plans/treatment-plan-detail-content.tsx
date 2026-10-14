@@ -4,6 +4,7 @@ import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { toast } from "sonner"
 
 import { EntityDeleteDialog } from "@/components/shared/entity-delete-dialog"
 import { InfoGrid } from "@/components/shared/info-grid"
@@ -54,6 +55,8 @@ function TreatmentPlanDetailContent({
   actor,
   showFinancials = true,
   onDataChanged,
+  onDeleteStart,
+  onDeleteFailed,
   onDeleted,
 }: {
   plan: TreatmentPlanDetail
@@ -62,6 +65,10 @@ function TreatmentPlanDetailContent({
   actor: TreatmentPlanActor
   showFinancials?: boolean
   onDataChanged?: () => void
+  /** Fired the moment deletion is confirmed — the inline list hides the plan right away instead of waiting for the round trip. */
+  onDeleteStart?: () => void
+  /** Undo for `onDeleteStart` when the server rejects the delete. */
+  onDeleteFailed?: () => void
   onDeleted?: () => void
 }) {
   const router = useRouter()
@@ -185,12 +192,15 @@ function TreatmentPlanDetailContent({
             reasonLabel="Silme sebebi (opsiyonel)"
             reasonPlaceholder="Bu planı neden siliyorsunuz? (opsiyonel)"
             onConfirm={async (reason) => {
+              onDeleteStart?.()
               const result = await deleteTreatmentPlan({ planId: plan.id, reason })
               if (result?.success) {
+                toast.success("Tedavi planı silindi.")
                 onDeleted?.()
                 router.refresh()
                 return undefined
               }
+              onDeleteFailed?.()
               return { error: result?.error ?? "Tedavi planı silinemedi." }
             }}
           />

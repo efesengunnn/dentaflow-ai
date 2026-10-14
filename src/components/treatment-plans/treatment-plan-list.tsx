@@ -39,8 +39,12 @@ function TreatmentPlanList({
   actor: TreatmentPlanActor
 }) {
   const [openPlanIds, setOpenPlanIds] = useState<string[]>([])
+  // Plans whose delete was just confirmed — hidden immediately; the route
+  // refresh that follows drops them from `plans` for good.
+  const [deletingPlanIds, setDeletingPlanIds] = useState<string[]>([])
+  const visiblePlans = plans.filter((plan) => !deletingPlanIds.includes(plan.id))
 
-  if (plans.length === 0) {
+  if (visiblePlans.length === 0) {
     return (
       <EmptyState
         icon={ClipboardList}
@@ -56,7 +60,7 @@ function TreatmentPlanList({
 
   return (
     <div className="flex flex-col gap-2">
-      {plans.map((plan) => (
+      {visiblePlans.map((plan) => (
         <Collapsible
           key={plan.id}
           open={openPlanIds.includes(plan.id)}
@@ -89,6 +93,8 @@ function TreatmentPlanList({
                   providers={providers}
                   actor={actor}
                   showFinancials={false}
+                  onDeleteStart={() => setDeletingPlanIds((current) => [...current, plan.id])}
+                  onDeleteFailed={() => setDeletingPlanIds((current) => current.filter((id) => id !== plan.id))}
                 />
               </div>
             </CollapsibleContent>
