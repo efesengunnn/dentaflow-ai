@@ -564,10 +564,17 @@ function FinancialSummaryCards({
   const [detailPlanId, setDetailPlanId] = useState<string | null>(null)
   const [detailPlan, setDetailPlan] = useState<TreatmentPlanDetail | null>(null)
 
-  const openPlanDetail = useCallback((planId: string) => {
-    setDetailPlanId(planId)
+  const loadPlanDetail = useCallback((planId: string) => {
     fetchTreatmentPlanDetail(planId).then(setDetailPlan)
   }, [])
+
+  const openPlanDetail = useCallback(
+    (planId: string) => {
+      setDetailPlanId(planId)
+      loadPlanDetail(planId)
+    },
+    [loadPlanDetail],
+  )
 
   const [revenueStaffId, setRevenueStaffId] = useState("all")
   const [revenueDateFrom, setRevenueDateFrom] = useState<Date | undefined>(() => startOfThisMonth())
@@ -762,6 +769,7 @@ function FinancialSummaryCards({
               setDetailPlan(null)
             }
           }}
+          onDataChanged={() => detailPlanId && loadPlanDetail(detailPlanId)}
         />
       )}
     </div>

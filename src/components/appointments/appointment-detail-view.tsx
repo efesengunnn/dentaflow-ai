@@ -1,4 +1,4 @@
-import { CheckCircle2, Pencil, Stethoscope, UserRound, Wallet } from "lucide-react"
+import { Pencil, Stethoscope, UserRound, Wallet } from "lucide-react"
 import Link from "next/link"
 
 import { BreadcrumbLabel } from "@/components/layout/breadcrumb-label"
@@ -6,11 +6,10 @@ import { InlineWarningBanner } from "@/components/shared/inline-warning-banner"
 import { PageContainer } from "@/components/shared/page-container"
 import { PageHeader } from "@/components/shared/page-header"
 import { PageSection } from "@/components/shared/page-section"
-import { CompleteSessionSheet } from "@/components/treatment-plans/complete-session-sheet"
+import { TreatmentItemRow } from "@/components/treatment-plans/treatment-plan-item-row"
 import { AddPaymentSheet } from "@/components/treatments/add-payment-sheet"
 import { CompleteSessionButton } from "@/components/treatments/complete-session-button"
 import { TreatmentEntrySheet } from "@/components/treatments/treatment-entry-sheet"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { AppointmentActivityRow, AppointmentDetail } from "@/lib/appointments/queries"
@@ -18,7 +17,7 @@ import { formatCurrency } from "@/lib/format/currency"
 import { formatIstanbulDateTime } from "@/lib/format/date"
 import type { PatientOption } from "@/lib/patients/queries"
 import type { AssignableStaff } from "@/lib/staff/queries"
-import { canCompleteSession, type TreatmentPlanActor } from "@/lib/treatment-plans/permissions"
+import type { TreatmentPlanActor } from "@/lib/treatment-plans/permissions"
 import type { AppointmentLinkedTreatmentPlanItem } from "@/lib/treatment-plans/queries"
 import type { TreatmentSeriesDetail } from "@/lib/treatments/queries"
 import { cn } from "@/lib/utils"
@@ -80,16 +79,6 @@ function AppointmentDetailView({
   const showTahsilatYap =
     seriesDetail !== null && canManagePayments && seriesDetail.remainingBalance !== null && seriesDetail.remainingBalance > 0
 
-  // Sprint 34 — an appointment can cover several plan items. Each eligible item
-  // gets its own "Seansı Tamamla"; `canCompleteEach` mirrors the same
-  // idempotency check `completeTreatmentSession` re-verifies server-side.
-  const canCompleteSessions = canCompleteSession(treatmentPlanActor) && appointment.status !== "completed"
-  const completableItems = canCompleteSessions
-    ? linkedTreatmentPlanItems.filter(
-        (item) => !item.hasCompletedSessionForAppointment && item.remainingSessions > 0 && item.itemStatus === "active",
-      )
-    : []
-
   // Payment ledger is plan-level; all items on one appointment share a provider
   // and (in the common case) a plan, so payment is offered against the first
   // linked item's plan. A plan can owe in more than one currency.
@@ -136,22 +125,14 @@ function AppointmentDetailView({
                 <CardTitle>{linkedTreatmentPlanItems.length > 1 ? "Tedaviler" : "Tedavi Planı"}</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-2">
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
                   {linkedTreatmentPlanItems.map((item) => (
-                    <div
+                    <TreatmentItemRow
                       key={item.treatmentPlanItemId}
-                      className="flex flex-col gap-1 [&:not(:first-child)]:border-t [&:not(:first-child)]:pt-3"
-                    >
-                      <div className="flex items-center gap-x-4 gap-y-1">
-                        <span className="min-w-0 flex-1 truncate font-medium">{item.treatmentName}</span>
-                        {item.hasCompletedSessionForAppointment && (
-                          <Badge variant="success">Bu randevu için tamamlandı</Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {item.providerName} · {item.completedSessions} / {item.sessionCount} Seans Tamamlandı
-                      </p>
-                    </div>
+                      item={{ ...item, id: item.treatmentPlanItemId, status: item.itemStatus }}
+                      actor={treatmentPlanActor}
+                      appointmentId={appointment.id}
+                    />
                   ))}
                 </div>
 
@@ -225,25 +206,6 @@ function AppointmentDetailView({
                   label={`${linkedTreatment.sessionNumber}. Seansı Tamamla`}
                 />
               )}
-              {completableItems.map((item) => (
-                <CompleteSessionSheet
-                  key={item.treatmentPlanItemId}
-                  treatmentPlanItemId={item.treatmentPlanItemId}
-                  treatmentName={item.treatmentName}
-                  appointmentId={appointment.id}
-                  nextSessionNumber={item.completedSessions + 1}
-                  staffOptions={staffOptions}
-                  defaultStaffId={treatmentPlanActor.staffId || item.providerId}
-                  trigger={
-                    <Button size="sm" variant="success">
-                      <CheckCircle2 />
-                      {linkedTreatmentPlanItems.length > 1
-                        ? `${item.treatmentName}: Seansı Tamamla`
-                        : `${item.completedSessions + 1}. Seansı Tamamla`}
-                    </Button>
-                  }
-                />
-              ))}
               {showTahsilatYap && seriesDetail && (
                 <AddPaymentSheet
                   seriesId={seriesDetail.id}

@@ -29,22 +29,6 @@ export const TREATMENT_PLAN_STATUS_OPTIONS: { value: TreatmentLifecycleStatus; l
   ["active", "completed", "cancelled"] as const
 ).map((value) => ({ value, label: TREATMENT_PLAN_STATUS_LABELS[value] }))
 
-/** `treatment_sessions.status` — a session only ever exists once performed, so there is no "Planlandı" value here (unlike the legacy per-session label override on `treatment_lifecycle_status`). See docs/DATABASE.md#treatment-sessions. */
-export const TREATMENT_SESSION_STATUS_LABELS: Record<TreatmentSessionStatus, string> = {
-  completed: "Tamamlandı",
-  corrected: "Düzeltildi",
-  voided: "Geçersiz Kılındı",
-}
-
-export const TREATMENT_SESSION_STATUS_BADGE_VARIANT: Record<
-  TreatmentSessionStatus,
-  "secondary" | "default" | "warning" | "success" | "destructive"
-> = {
-  completed: "success",
-  corrected: "warning",
-  voided: "destructive",
-}
-
 export const TREATMENT_PAYMENT_METHOD_LABELS: Record<TreatmentPaymentMethod, string> = {
   cash: "Nakit",
   credit_card: "Kredi Kartı",
@@ -111,15 +95,56 @@ export const INACTIVE_PATIENT_THRESHOLD_DAYS = 30
 /** "Planı 1 seans kalanlar" — an active plan item with exactly this many sessions left. */
 export const PLAN_ENDING_SESSIONS_REMAINING = 1
 
-/**
- * Session count/date fields default a new one-off treatment plan to
- * "1 item, 1 session" — there is no separate form/mode for a single
- * session vs. a multi-session plan, per founder decision (Sprint 28): both
- * go through the same Tedavi Planı wizard.
- */
-export const STANDALONE_TREATMENT_SESSION_COUNT = 1
-
 export const PATIENT_TREATMENT_PLAN_LIMIT = 10
+
+/**
+ * Tooth-based progress (founder decision 2026-10-14), replacing the session
+ * counter on the patient card and appointment detail: an item is in progress,
+ * partly done (several charted teeth, only some completed) or done. `done`
+ * always follows `status`, which the database keeps in sync — see
+ * `20261014090000_track_treatment_completion_per_tooth.sql`.
+ */
+export type TreatmentProgress = "pending" | "partial" | "done"
+
+export const TREATMENT_PROGRESS_LABELS: Record<TreatmentProgress, string> = {
+  pending: "Devam Ediyor",
+  partial: "Kısmen Tamamlandı",
+  done: "Tamamlandı",
+}
+
+export const TREATMENT_PROGRESS_BADGE_VARIANT: Record<TreatmentProgress, "warning" | "info" | "success"> = {
+  pending: "warning",
+  partial: "info",
+  done: "success",
+}
+
+/** Teeth of an item covered by a live tooth-based completion; every tooth once the item is `completed` (legacy session-based items carry no tooth info). */
+export function collectCompletedTeeth(
+  status: TreatmentLifecycleStatus,
+  toothNumbers: readonly number[],
+  completions: readonly { toothNumbers: readonly number[] }[],
+): number[] {
+  if (status === "completed") return [...toothNumbers]
+  const done = new Set(completions.flatMap((completion) => completion.toothNumbers))
+  return toothNumbers.filter((tooth) => done.has(tooth))
+}
+
+export function deriveItemProgress(item: {
+  status: TreatmentLifecycleStatus
+  toothNumbers: readonly number[]
+  completedToothNumbers: readonly number[]
+}): TreatmentProgress {
+  if (item.status === "completed") return "done"
+  return item.toothNumbers.length > 1 && item.completedToothNumbers.length > 0 ? "partial" : "pending"
+}
+
+export function derivePlanProgress(plan: {
+  status: TreatmentLifecycleStatus
+  items: readonly { status: TreatmentLifecycleStatus; toothNumbers: readonly number[]; completedToothNumbers: readonly number[] }[]
+}): TreatmentProgress {
+  if (plan.status === "completed") return "done"
+  return plan.items.some((item) => deriveItemProgress(item) !== "pending") ? "partial" : "pending"
+}
 
 /**
  * An item's line total: the unit price applies per charted tooth (3 teeth of

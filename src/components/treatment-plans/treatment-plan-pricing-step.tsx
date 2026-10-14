@@ -107,7 +107,7 @@ function sortCurrencies(currencies: string[]): string[] {
 }
 
 /**
- * Adım 4 — "Fiyat": kalem başına birim fiyat + para birimi + Kontrol Günü +
+ * Adım 3 — "Fiyat": kalem başına birim fiyat + para birimi + Kontrol Günü +
  * otomatik toplam. Sprint 31 — bir plan TRY + EUR karışık olabildiği için Ara
  * Toplam ve Genel Toplam her para birimi için ayrı gösterilir, asla toplanmaz.
  */
@@ -142,7 +142,7 @@ function TreatmentPlanPricingStep({
     <div className="flex flex-col gap-4">
       <div>
         <h3 className="text-base font-medium">Fiyat</h3>
-        <p className="text-sm text-muted-foreground">Her tedavi için fiyat ve para birimini girin. Diş seçildiyse fiyat diş başınadır; seans sayısı fiyatı etkilemez.</p>
+        <p className="text-sm text-muted-foreground">Her tedavi için fiyat ve para birimini girin. Diş seçildiyse fiyat diş başınadır.</p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -152,9 +152,7 @@ function TreatmentPlanPricingStep({
           return (
             <div key={row.key} className="flex flex-col gap-3 rounded-xl border border-border p-3.5">
               <div className="flex items-center justify-between gap-3">
-                <span className="min-w-0 truncate font-medium">
-                  {row.treatmentName} <span className="text-muted-foreground">· {row.sessionCount} seans</span>
-                </span>
+                <span className="min-w-0 truncate font-medium">{row.treatmentName}</span>
                 <span className="flex shrink-0 flex-col items-end">
                   <span className="font-semibold tabular-nums">{formatMoney(total, row.currency)}</span>
                   {toothCount > 1 && row.unitPrice !== undefined && (

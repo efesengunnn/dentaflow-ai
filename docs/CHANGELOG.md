@@ -21,3 +21,24 @@ Scope (founder decision): permanent dentition only, no orthodontics, no SGK/insu
 explicitly deferred. Found and fixed via real browser click-through: leftover "ClinicFlow AI"
 branding in 4 files, and a missing "Sağlayıcı" field on the appointment form (silently dropped
 when the treatment-plan picker that used to set it was removed during bootstrap).
+
+## 2026-10-14 — Tooth-based treatment completion
+
+Patient card: clicking a treatment plan now expands its detail inline under the plan (the side
+sheet is gone there; the Dashboard drill-down still uses it). Each treatment is one row — name,
+charted teeth, price, "Tamamlandı" — with a 3-colour status: yellow (Devam Ediyor), blue
+(Kısmen Tamamlandı, some of several teeth done) and green (Tamamlandı). Session counters,
+session history and the "Seansı Tamamla" form were removed from this flow. For multi-tooth
+treatments "Tamamlandı" opens a small dialog to tick which teeth were finished; completed teeth
+turn green and any completion can be undone ("Geri al"). Items and plans complete
+automatically (database triggers, see DATABASE.md). The appointment detail uses the same rows,
+and the booking picker now shows remaining teeth instead of remaining sessions. Design system:
+new `info` colour token and Badge variant.
+
+Follow-up the same day: the inline plan detail on the patient card no longer repeats Toplam/
+Ödenen/Kalan and the payment list (the card's own "Ödemeler" section shows them; payment
+İade/Düzeltme moved onto its rows). The session concept is gone from plan creation and editing:
+the wizard's "Seans Sayısı" step (now 5 steps), the session count field in "Kalemi Düzenle",
+and the session counter/history on the Tedavi Planları detail page (now progress, teeth and
+completion dates). New items keep the DB default `session_count = 1`; legacy items keep theirs.
+The Dashboard's plan drill-down sheet now reloads itself after any change made inside it.

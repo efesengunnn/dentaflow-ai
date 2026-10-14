@@ -40,3 +40,29 @@ actually perform treatments); `patient_payments` writes to `owner`/`secretary` (
 
 Not yet written: orthodontics (long-running, recurring-adjustment treatment plans) and SGK/
 insurance billing — both explicitly deferred past v1, revisit as their own schema decisions.
+
+## Tooth-based treatment completion (2026-10-14)
+
+`supabase/migrations/20261014090000_track_treatment_completion_per_tooth.sql`. Session-based
+progress ("2 / 3 Seans") on treatment plan items is replaced by per-tooth completion.
+
+- **`treatment_sessions.tooth_numbers smallint[]`** — which of the item's FDI teeth a completion
+  covered. `null` = legacy session-based completion (no tooth info), `'{}'` = completion of an
+  item with no charted teeth, otherwise exactly those teeth. Same FDI validity check as
+  `treatment_plan_items.tooth_numbers`. Each "Tamamlandı" click inserts one session row (who =
+  the item's hekim, when = today in Istanbul); "Geri al" voids that row (`status = 'voided'`).
+- **`sync_treatment_plan_item_status(item_id)`** — an item is `completed` when every charted
+  tooth is covered by a live (`completed`, not deleted) completion, or — no teeth charted — when
+  any tooth-based completion exists. Legacy rule kept: completed once `null`-teeth sessions
+  reach `session_count`. Toggles only `active` ↔ `completed`; `cancelled`/`voided` untouched.
+- **`sync_treatment_plan_status(plan_id)`** — a plan is `completed` when no live item is still
+  `active` and at least one is `completed`.
+- Triggers: `treatment_sessions_sync_item_status` (after insert / update of `status`,
+  `deleted_at`, `tooth_numbers`) and `treatment_plan_items_sync_statuses` (after update of
+  `tooth_numbers`, `session_count`, `status`, `deleted_at`). Both are SECURITY DEFINER because a
+  secretary may complete/undo a treatment (session INSERT/UPDATE) but RLS does not let them
+  update items or plans; they run inside the user's own statement so the audit trigger still
+  sees `auth.uid()`.
+- Backfill: active legacy items whose completed sessions already reached `session_count` were
+  flipped to `completed` (and their plans, where every item was done). Prices and payments are
+  untouched.

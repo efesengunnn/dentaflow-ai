@@ -11,6 +11,7 @@ import {
   type TreatmentPaymentEntryType,
   type TreatmentPaymentMethod,
   type TreatmentSessionStatus,
+  collectCompletedTeeth,
 } from "@/lib/treatment-plans/constants"
 
 // ---------------------------------------------------------------------------
@@ -119,11 +120,38 @@ export type TreatmentSessionRow = {
   correctedAt: string | null
   correctionReason: string | null
   replacedBySessionId: string | null
+  /** Teeth this completion covered — null for legacy session-based completions, empty for a tooth-based completion of an item without teeth. */
+  toothNumbers: number[] | null
   createdAt: string
 }
 
+/** A live tooth-based "Tamamlandı" record of an item — what the completion dialog lists and lets the user undo. */
+export type TreatmentCompletion = {
+  sessionId: string
+  toothNumbers: number[]
+  performedById: string
+  performedAt: string
+  createdAt: string
+}
+
+function toCompletions(sessions: readonly TreatmentSessionRow[]): TreatmentCompletion[] {
+  return sessions.flatMap((session) =>
+    session.status === "completed" && session.toothNumbers !== null
+      ? [
+          {
+            sessionId: session.id,
+            toothNumbers: session.toothNumbers,
+            performedById: session.performedById,
+            performedAt: session.performedAt,
+            createdAt: session.createdAt,
+          },
+        ]
+      : [],
+  )
+}
+
 const SESSION_SELECT =
-  "id, treatment_plan_item_id, patient_id, appointment_id, session_number, performed_by, performed_at, control_date, notes, unit_price_snapshot, status, corrected_by, corrected_at, correction_reason, replaced_by_session_id, created_at, performed_staff:staff_members!treatment_sessions_performed_by_fkey(full_name), corrected_staff:staff_members!treatment_sessions_corrected_by_fkey(full_name)"
+  "id, treatment_plan_item_id, patient_id, appointment_id, session_number, performed_by, performed_at, control_date, notes, unit_price_snapshot, status, tooth_numbers, corrected_by, corrected_at, correction_reason, replaced_by_session_id, created_at, performed_staff:staff_members!treatment_sessions_performed_by_fkey(full_name), corrected_staff:staff_members!treatment_sessions_corrected_by_fkey(full_name)"
 
 function mapSessionRow(row: {
   id: string
@@ -137,6 +165,7 @@ function mapSessionRow(row: {
   notes: string | null
   unit_price_snapshot: number | null
   status: TreatmentSessionStatus
+  tooth_numbers: number[] | null
   corrected_by: string | null
   corrected_at: string | null
   correction_reason: string | null
@@ -163,6 +192,7 @@ function mapSessionRow(row: {
     correctedAt: row.corrected_at,
     correctionReason: row.correction_reason,
     replacedBySessionId: row.replaced_by_session_id,
+    toothNumbers: row.tooth_numbers,
     createdAt: row.created_at,
   }
 }
@@ -283,6 +313,9 @@ export type TreatmentPlanItemDetail = {
   controlDate: string | null
   /** Sprint 33 — FDI tooth numbers this item targets; empty means whole-mouth / not tooth-specific. */
   toothNumbers: number[]
+  /** Subset of `toothNumbers` already completed (all of them once the item is `completed`). */
+  completedToothNumbers: number[]
+  completions: TreatmentCompletion[]
   status: TreatmentLifecycleStatus
   revisionNo: number
   sessions: TreatmentSessionRow[]
@@ -334,6 +367,8 @@ async function loadTreatmentPlanDetails(
       "id, treatment_plan_id, provider_id, treatment_name, session_count, unit_price, total_price, currency, provider_share_amount, control_date, tooth_numbers, status, revision_no, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name)",
     )
     .in("treatment_plan_id", planIds)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
   if (!includeDeleted) itemQuery = itemQuery.is("deleted_at", null)
   const { data: itemRows, error: itemError } = await itemQuery
   if (itemError) throw itemError
@@ -397,6 +432,8 @@ async function loadTreatmentPlanDetails(
   for (const row of items) {
     const itemSessions = sessionsByItemId.get(row.id) ?? []
     const completedSessions = itemSessions.filter((session) => session.status === "completed").length
+    const toothNumbers = row.tooth_numbers ?? []
+    const completions = toCompletions(itemSessions)
     const item: TreatmentPlanItemDetail = {
       id: row.id,
       treatmentPlanId: row.treatment_plan_id,
@@ -411,7 +448,9 @@ async function loadTreatmentPlanDetails(
       currency: row.currency,
       providerShareAmount: row.provider_share_amount,
       controlDate: row.control_date,
-      toothNumbers: row.tooth_numbers ?? [],
+      toothNumbers,
+      completedToothNumbers: collectCompletedTeeth(row.status, toothNumbers, completions),
+      completions,
       status: row.status,
       revisionNo: row.revision_no,
       sessions: itemSessions,
@@ -482,24 +521,25 @@ export async function getTreatmentPlanDetail(planId: string, includeDeleted = fa
 }
 
 // ---------------------------------------------------------------------------
-// getRemainingSessionsForPatient — feeds the appointment combo-flow's
-// "Mevcut Plandan Devam Et" item picker (only items with remaining sessions
-// on an active plan are selectable). A dedicated lean query, not a reuse of
-// `getPatientTreatmentPlans`'s full detail — matches the existing
-// `getActiveSeriesForPatient` precedent of a narrow, on-demand read.
+// getBookableTreatmentItemsForPatient — feeds the appointment combo-flow's
+// "Mevcut Plandan Devam Et" item picker. Bookable = an item still `active` on
+// an active plan; since 2026-10-14 the database flips an item to `completed`
+// once all its teeth are done, so status alone is the source of truth (no
+// session arithmetic). A dedicated lean query, not a reuse of
+// `getPatientTreatmentPlans`'s full detail.
 // ---------------------------------------------------------------------------
-export type RemainingSessionItem = {
+export type BookableTreatmentItem = {
   treatmentPlanId: string
   planName: string
   itemId: string
   treatmentName: string
   providerId: string
   providerName: string
-  sessionCount: number
-  remainingSessions: number
+  /** Charted teeth not yet completed — empty for an item without teeth. */
+  remainingToothNumbers: number[]
 }
 
-export async function getRemainingSessionsForPatient(patientId: string): Promise<RemainingSessionItem[]> {
+export async function getBookableTreatmentItemsForPatient(patientId: string): Promise<BookableTreatmentItem[]> {
   const supabase = await createClient()
 
   const { data: planRows, error: planError } = await supabase
@@ -507,57 +547,56 @@ export async function getRemainingSessionsForPatient(patientId: string): Promise
     .select("id, plan_name")
     .eq("patient_id", patientId)
     .eq("status", "active")
+    .is("deleted_at", null)
   if (planError) throw planError
 
   const plans = planRows ?? []
   if (plans.length === 0) return []
-  const planIds = plans.map((row) => row.id)
   const planNameById = new Map(plans.map((row) => [row.id, row.plan_name]))
 
   const { data: itemRows, error: itemError } = await supabase
     .from("treatment_plan_items")
     .select(
-      "id, treatment_plan_id, provider_id, treatment_name, session_count, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name)",
+      "id, treatment_plan_id, provider_id, treatment_name, tooth_numbers, status, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name)",
     )
-    .in("treatment_plan_id", planIds)
+    .in("treatment_plan_id", Array.from(planNameById.keys()))
     .eq("status", "active")
     .is("deleted_at", null)
   if (itemError) throw itemError
 
   const items = itemRows ?? []
   if (items.length === 0) return []
-  const itemIds = items.map((row) => row.id)
 
   const { data: sessionRows, error: sessionError } = await supabase
     .from("treatment_sessions")
-    .select("treatment_plan_item_id")
-    .in("treatment_plan_item_id", itemIds)
+    .select("treatment_plan_item_id, tooth_numbers")
+    .in(
+      "treatment_plan_item_id",
+      items.map((row) => row.id),
+    )
     .eq("status", "completed")
+    .not("tooth_numbers", "is", null)
     .is("deleted_at", null)
   if (sessionError) throw sessionError
 
-  const completedByItemId = new Map<string, number>()
-  for (const row of sessionRows ?? []) {
-    completedByItemId.set(row.treatment_plan_item_id, (completedByItemId.get(row.treatment_plan_item_id) ?? 0) + 1)
-  }
+  const completionsByItemId = groupBy(
+    (sessionRows ?? []).map((row) => ({ itemId: row.treatment_plan_item_id, toothNumbers: row.tooth_numbers ?? [] })),
+    (row) => row.itemId,
+  )
 
-  const rows: RemainingSessionItem[] = []
-  for (const item of items) {
-    const completed = completedByItemId.get(item.id) ?? 0
-    const remaining = Math.max(item.session_count - completed, 0)
-    if (remaining <= 0) continue
-    rows.push({
+  return items.map((item) => {
+    const toothNumbers = item.tooth_numbers ?? []
+    const completed = collectCompletedTeeth(item.status, toothNumbers, completionsByItemId.get(item.id) ?? [])
+    return {
       treatmentPlanId: item.treatment_plan_id,
       planName: planNameById.get(item.treatment_plan_id) ?? "",
       itemId: item.id,
       treatmentName: item.treatment_name,
       providerId: item.provider_id,
       providerName: item.provider?.full_name ?? "",
-      sessionCount: item.session_count,
-      remainingSessions: remaining,
-    })
-  }
-  return rows
+      remainingToothNumbers: toothNumbers.filter((tooth) => !completed.includes(tooth)),
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -803,9 +842,8 @@ export async function getFollowUpCandidatesForAI(): Promise<AIFollowUpCandidates
 
 // ---------------------------------------------------------------------------
 // getAppointmentLinkedTreatmentPlanItem — Sprint 28D. Feeds the appointment
-// detail page's "Seansı Tamamla" quick action, resolving
-// appointments.treatment_plan_item_id (set at booking time, Sprint 28C) into
-// the item's live session progress. Entirely separate from the legacy
+// detail page's treatment rows, resolving the appointment's linked plan items
+// (set at booking time) into their live tooth-based progress (2026-10-14). Entirely separate from the legacy
 // `AppointmentDetail.linkedTreatment` (treatment_series-based) — an
 // appointment has at most one of the two links, never both.
 // ---------------------------------------------------------------------------
@@ -816,12 +854,12 @@ export type AppointmentLinkedTreatmentPlanItem = {
   treatmentName: string
   providerId: string
   providerName: string
-  sessionCount: number
-  completedSessions: number
-  remainingSessions: number
+  totalPrice: number | null
+  currency: string
+  toothNumbers: number[]
+  completedToothNumbers: number[]
+  completions: TreatmentCompletion[]
   itemStatus: TreatmentLifecycleStatus
-  /** Whether a `completed` session already exists tied to *this* appointment — the same idempotency check `completeTreatmentSession` re-verifies server-side, mirrored here so the button/badge choice never lies. */
-  hasCompletedSessionForAppointment: boolean
   /**
    * Plan-level financial figures (Sprint 31 — founder bug report 2026-09-11:
    * "randevu oluşturup ödeme al dediğimde panelde bunun sonucu verilmiyor").
@@ -866,20 +904,17 @@ export async function getAppointmentLinkedTreatmentPlanItems(
 
   if (itemIds.length === 0) return []
 
-  const built = await Promise.all(itemIds.map((id) => buildLinkedItemDetail(appointmentId, id)))
+  const built = await Promise.all(itemIds.map((id) => buildLinkedItemDetail(id)))
   return built.filter((row): row is AppointmentLinkedTreatmentPlanItem => row !== null)
 }
 
-async function buildLinkedItemDetail(
-  appointmentId: string,
-  itemId: string,
-): Promise<AppointmentLinkedTreatmentPlanItem | null> {
+async function buildLinkedItemDetail(itemId: string): Promise<AppointmentLinkedTreatmentPlanItem | null> {
   const supabase = await createClient()
 
   const { data: item, error: itemError } = await supabase
     .from("treatment_plan_items")
     .select(
-      "id, treatment_plan_id, provider_id, treatment_name, session_count, status, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name), plan:treatment_plans!treatment_plan_items_treatment_plan_id_fkey(plan_name, currency)",
+      "id, treatment_plan_id, provider_id, treatment_name, total_price, currency, tooth_numbers, status, provider:staff_members!treatment_plan_items_provider_id_fkey(full_name), plan:treatment_plans!treatment_plan_items_treatment_plan_id_fkey(plan_name, currency)",
     )
     .eq("id", itemId)
     .is("deleted_at", null)
@@ -887,22 +922,15 @@ async function buildLinkedItemDetail(
 
   if (itemError || !item) return null
 
-  const [{ count: completedCount }, { data: appointmentSession }, { data: planItems }, { data: planPayments }] =
+  const [{ data: sessionRows }, { data: planItems }, { data: planPayments }] =
     await Promise.all([
       supabase
         .from("treatment_sessions")
-        .select("id", { count: "exact", head: true })
-        .eq("treatment_plan_item_id", item.id)
-        .eq("status", "completed")
-        .is("deleted_at", null),
-      supabase
-        .from("treatment_sessions")
-        .select("id")
-        .eq("appointment_id", appointmentId)
+        .select(SESSION_SELECT)
         .eq("treatment_plan_item_id", item.id)
         .eq("status", "completed")
         .is("deleted_at", null)
-        .maybeSingle(),
+        .order("created_at", { ascending: true }),
       // Plan-level financials — the payment ledger lives per plan, not per
       // item, so figures are computed over every item/payment in the plan
       // (same rule as `getTreatmentPlanDetail`), not just this one linked
@@ -918,7 +946,8 @@ async function buildLinkedItemDetail(
         .eq("treatment_plan_id", item.treatment_plan_id),
     ])
 
-  const completed = completedCount ?? 0
+  const toothNumbers = item.tooth_numbers ?? []
+  const completions = toCompletions((sessionRows ?? []).map(mapSessionRow))
 
   const currencyTotals = deriveCurrencyTotals(
     (planItems ?? []).map((row) => ({ currency: row.currency, totalPrice: row.total_price })),
@@ -932,11 +961,12 @@ async function buildLinkedItemDetail(
     treatmentName: item.treatment_name,
     providerId: item.provider_id,
     providerName: item.provider?.full_name ?? "",
-    sessionCount: item.session_count,
-    completedSessions: completed,
-    remainingSessions: Math.max(item.session_count - completed, 0),
+    totalPrice: item.total_price,
+    currency: item.currency,
+    toothNumbers,
+    completedToothNumbers: collectCompletedTeeth(item.status, toothNumbers, completions),
+    completions,
     itemStatus: item.status,
-    hasCompletedSessionForAppointment: appointmentSession !== null,
     currencyTotals,
   }
 }

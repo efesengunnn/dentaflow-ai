@@ -33,7 +33,7 @@ import type { PatientActivityRow, PatientDetail, PatientOption } from "@/lib/pat
 import type { AssignableStaff } from "@/lib/staff/queries"
 import type { TreatmentSeriesDetail } from "@/lib/treatments/queries"
 import { TreatmentPlanList } from "@/components/treatment-plans/treatment-plan-list"
-import type { TreatmentPlanActor } from "@/lib/treatment-plans/permissions"
+import { canCorrectPayment, type TreatmentPlanActor } from "@/lib/treatment-plans/permissions"
 import type { TreatmentPlanDetail } from "@/lib/treatment-plans/queries"
 import { AppointmentErrorToast } from "./appointment-error-toast"
 import { PatientActivityTimeline } from "./patient-activity-timeline"
@@ -350,7 +350,10 @@ function PatientDetailView({
               icon={Wallet}
               actions={canManagePayments && <PatientPlanPaymentSheet planOptions={payablePlans} />}
             >
-              <PatientPaymentsSection treatmentPlans={treatmentPlans} />
+              <PatientPaymentsSection
+                treatmentPlans={treatmentPlans}
+                canCorrectPayments={canCorrectPayment(treatmentPlanActor)}
+              />
             </PageSection>
           </TabsContent>
 
