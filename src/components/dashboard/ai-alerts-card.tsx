@@ -6,15 +6,15 @@ import type { AIFollowUpCandidates } from "@/lib/treatment-plans/queries"
 function buildAlertRows(candidates: AIFollowUpCandidates): string[] {
   const rows: string[] = []
 
+  if (candidates.unfinishedTreatments.length > 0) {
+    rows.push(`Tedavisi tamamlanmamış, randevusu olmayan ${candidates.unfinishedTreatments.length} hasta`)
+  }
   for (const rule of FOLLOW_UP_RULES) {
     const count = candidates.byRule[rule.key].length
-    if (count > 0) rows.push(`${rule.label} kontrolü yaklaşan ${count} hasta`)
+    if (count > 0) rows.push(`${rule.label} kontrolü gelen ${count} hasta`)
   }
-  if (candidates.planEndingSoon.length > 0) {
-    rows.push(`Tedavi planı bitmek üzere ${candidates.planEndingSoon.length} hasta`)
-  }
-  if (candidates.inactivePatients.length > 0) {
-    rows.push(`30+ gündür gelmeyen ${candidates.inactivePatients.length} aktif hasta`)
+  if (candidates.periodicCheckups.length > 0) {
+    rows.push(`6 aydır gelmeyen ${candidates.periodicCheckups.length} hasta (periyodik kontrol)`)
   }
 
   return rows
@@ -29,10 +29,9 @@ function buildAlertRows(candidates: AIFollowUpCandidates): string[] {
  * display, no controls, so it's a bare hairline section rather than `Card` —
  * matching "Son Aktiviteler"/"Yaklaşan Randevular" (Project Evolution V2's
  * "Card reserved for control surfaces" rule, docs/DESIGN_SYSTEM.md).
- * Sprint 28D — repointed to the new Treatment Plan model's
- * `getFollowUpCandidatesForAI`/`FOLLOW_UP_RULES` (`planEndingSoon`, not the
- * legacy `packageEndingSoon`); the legacy `treatment_series`-based version in
- * `lib/ai/queries.ts` is no longer this card's data source.
+ * 2026-10-14 — dental rules: unfinished treatments without an appointment
+ * first (the most actionable), then due follow-ups per treatment, then
+ * periodic check-ups.
  */
 function AIAlertsCard({ candidates }: { candidates: AIFollowUpCandidates }) {
   const rows = buildAlertRows(candidates)

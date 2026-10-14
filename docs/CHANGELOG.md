@@ -42,3 +42,15 @@ the wizard's "Seans Sayısı" step (now 5 steps), the session count field in "Ka
 and the session counter/history on the Tedavi Planları detail page (now progress, teeth and
 completion dates). New items keep the DB default `session_count = 1`; legacy items keep theirs.
 The Dashboard's plan drill-down sheet now reloads itself after any change made inside it.
+
+## 2026-10-14 — AI assistant adapted to dental care
+
+The AI layer now reads the treatment plan model only (the legacy package/series tables are no
+longer queried). Aesthetic follow-up rules (Botoks/PRP/Mezoterapi, "30 gündür gelmeyen", "1 seans
+kalan") were replaced with dental ones, single-sourced in `lib/treatment-plans/constants.ts`:
+Çekim 7 days, Kanal tedavisi / İmplant / Diş taşı temizliği 6 months (a hand-entered control
+date always wins), "tedavisi tamamlanmamış, randevusu olmayan" patients, and 6-month periodic
+check-ups. Patients with an upcoming appointment are never flagged. The chat assistant got a
+dental system prompt (FDI teeth, tooth-based progress, no diagnosis) and a
+`getTreatmentPlanStatus` tool in place of `getPackageStatus`. The patient card's "AI Özet" box is
+computed from the already-loaded plans via `summarizePatientTreatments` (one query fewer).

@@ -1,10 +1,12 @@
 import { getCurrentStaffMember } from "@/lib/auth/get-current-staff-member"
+import { nowInIstanbul } from "@/lib/format/date"
 import { createClient } from "@/lib/supabase/server"
 import {
   FOLLOW_UP_RULES,
-  INACTIVE_PATIENT_THRESHOLD_DAYS,
   PATIENT_TREATMENT_PLAN_LIMIT,
-  PLAN_ENDING_SESSIONS_REMAINING,
+  PERIODIC_CHECKUP_DAYS,
+  matchFollowUpRule,
+  resolveFollowUpDueDate,
   type FollowUpRuleKey,
   type TreatmentActivityType,
   type TreatmentLifecycleStatus,
@@ -80,12 +82,6 @@ export function deriveCurrencyTotals(
 
 function daysBetween(isoDate: string, to: Date): number {
   return Math.floor((to.getTime() - new Date(isoDate).getTime()) / (1000 * 60 * 60 * 24))
-}
-
-function addDays(isoDate: string, days: number): string {
-  const date = new Date(isoDate)
-  date.setDate(date.getDate() + days)
-  return date.toISOString()
 }
 
 function groupBy<T, K>(rows: T[], keyOf: (row: T) => K): Map<K, T[]> {
@@ -721,123 +717,178 @@ export async function getAllTreatmentPlans(filters?: {
 }
 
 // ---------------------------------------------------------------------------
-// getFollowUpCandidatesForAI — new-schema equivalent of
-// `lib/ai/queries.ts`'s legacy `getFollowUpCandidatesForAI` (reads
-// treatment_plan_items/treatment_sessions instead of
-// treatment_series/treatments). The legacy AI-layer cutover (wiring this
-// into `lib/ai/tools.ts`) is a later step of Sprint 28, not part of this
-// migration/query-layer pass.
+// getFollowUpCandidatesForAI — dental follow-up signals (2026-10-14), shared
+// by the Dashboard "AI Uyarıları" card and the chat panel's
+// `getFollowUpCandidates` tool. Deterministic, no LLM. A patient who already
+// has an upcoming appointment is never flagged — they are already booked.
+//   - byRule: a treatment whose follow-up (çekim/kanal/implant/diş taşı, or a
+//     hand-entered control date) is due, with no visit since the treatment.
+//   - unfinishedTreatments: active plan items still pending, no appointment.
+//   - periodicCheckups: last treatment ≥ PERIODIC_CHECKUP_DAYS ago, no visit
+//     since.
+// Three batched reads (items, completions, a 6-month appointment window), no
+// per-patient round trips.
 // ---------------------------------------------------------------------------
 export type AIFollowUpCandidate = {
   patientId: string
   fullName: string
-  lastSessionDate: string
-  daysSinceLastSession: number
+  treatmentName: string
+  lastTreatmentDate: string
+  dueDate: string
 }
 
-export type AIPlanEndingSoonCandidate = {
+export type AIUnfinishedTreatmentCandidate = {
   patientId: string
   fullName: string
-  treatmentName: string
-  remainingSessions: number
+  pendingTreatments: { treatmentName: string; remainingToothNumbers: number[] }[]
+}
+
+export type AIPeriodicCheckupCandidate = {
+  patientId: string
+  fullName: string
+  lastTreatmentDate: string
+  daysSinceLastTreatment: number
 }
 
 export type AIFollowUpCandidates = {
   byRule: Record<FollowUpRuleKey, AIFollowUpCandidate[]>
-  planEndingSoon: AIPlanEndingSoonCandidate[]
-  inactivePatients: AIFollowUpCandidate[]
+  unfinishedTreatments: AIUnfinishedTreatmentCandidate[]
+  periodicCheckups: AIPeriodicCheckupCandidate[]
+}
+
+/** Istanbul calendar day (`yyyy-mm-dd`) of a UTC instant. */
+function istanbulDay(iso: string): string {
+  return new Date(Date.parse(iso) + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
 export async function getFollowUpCandidatesForAI(): Promise<AIFollowUpCandidates> {
   const supabase = await createClient()
+  const today = nowInIstanbul().toISOString().slice(0, 10)
+  const nowIso = new Date().toISOString()
+  const windowStart = new Date(Date.now() - PERIODIC_CHECKUP_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
-  const { data: itemRows, error: itemError } = await supabase
-    .from("treatment_plan_items")
-    .select("id, patient_id, treatment_name, session_count, status, patients!inner(full_name, deleted_at)")
-    .neq("status", "voided")
-    .is("deleted_at", null)
-    .is("patients.deleted_at", null)
+  const [{ data: itemRows, error: itemError }, { data: appointmentRows, error: appointmentError }] = await Promise.all([
+    supabase
+      .from("treatment_plan_items")
+      .select(
+        "id, patient_id, treatment_name, tooth_numbers, control_date, status, patients!inner(full_name, deleted_at), plan:treatment_plans!treatment_plan_items_treatment_plan_id_fkey(status, deleted_at)",
+      )
+      .neq("status", "voided")
+      .is("deleted_at", null)
+      .is("patients.deleted_at", null),
+    supabase
+      .from("appointments")
+      .select("patient_id, starts_at")
+      .is("deleted_at", null)
+      .not("status", "in", "(cancelled,no_show)")
+      .gte("starts_at", windowStart),
+  ])
   if (itemError) throw itemError
+  if (appointmentError) throw appointmentError
 
-  const items = itemRows ?? []
-  const itemIds = items.map((row) => row.id)
+  const items = (itemRows ?? []).filter((row) => row.plan && row.plan.deleted_at === null)
 
   const { data: sessionRows, error: sessionError } =
-    itemIds.length > 0
+    items.length > 0
       ? await supabase
           .from("treatment_sessions")
-          .select("treatment_plan_item_id, performed_at, control_date")
-          .in("treatment_plan_item_id", itemIds)
+          .select("treatment_plan_item_id, performed_at, control_date, tooth_numbers")
+          .in(
+            "treatment_plan_item_id",
+            items.map((row) => row.id),
+          )
           .eq("status", "completed")
           .is("deleted_at", null)
-      : { data: [] as { treatment_plan_item_id: string; performed_at: string; control_date: string | null }[], error: null }
+      : {
+          data: [] as {
+            treatment_plan_item_id: string
+            performed_at: string
+            control_date: string | null
+            tooth_numbers: number[] | null
+          }[],
+          error: null,
+        }
   if (sessionError) throw sessionError
 
-  const completedCountByItemId = new Map<string, number>()
-  const latestSessionByItemId = new Map<string, { performedAt: string; controlDate: string | null }>()
-  for (const row of sessionRows ?? []) {
-    completedCountByItemId.set(row.treatment_plan_item_id, (completedCountByItemId.get(row.treatment_plan_item_id) ?? 0) + 1)
-    const existing = latestSessionByItemId.get(row.treatment_plan_item_id)
-    if (!existing || row.performed_at > existing.performedAt) {
-      latestSessionByItemId.set(row.treatment_plan_item_id, { performedAt: row.performed_at, controlDate: row.control_date })
-    }
+  // Latest visit day (past or future) per patient inside the window; any
+  // future one means "already booked".
+  const latestVisitDayByPatientId = new Map<string, string>()
+  const bookedPatientIds = new Set<string>()
+  for (const row of appointmentRows ?? []) {
+    const day = istanbulDay(row.starts_at)
+    if ((latestVisitDayByPatientId.get(row.patient_id) ?? "") < day) latestVisitDayByPatientId.set(row.patient_id, day)
+    if (row.starts_at > nowIso) bookedPatientIds.add(row.patient_id)
   }
 
-  const now = new Date()
+  const latestCompletionByItemId = new Map<string, { performedAt: string; controlDate: string | null }>()
+  const completedTeethByItemId = new Map<string, Set<number>>()
+  for (const row of sessionRows ?? []) {
+    const existing = latestCompletionByItemId.get(row.treatment_plan_item_id)
+    if (!existing || row.performed_at > existing.performedAt) {
+      latestCompletionByItemId.set(row.treatment_plan_item_id, { performedAt: row.performed_at, controlDate: row.control_date })
+    }
+    const teeth = completedTeethByItemId.get(row.treatment_plan_item_id) ?? new Set<number>()
+    for (const tooth of row.tooth_numbers ?? []) teeth.add(tooth)
+    completedTeethByItemId.set(row.treatment_plan_item_id, teeth)
+  }
+
   const byRule = Object.fromEntries(FOLLOW_UP_RULES.map((rule) => [rule.key, [] as AIFollowUpCandidate[]])) as Record<
     FollowUpRuleKey,
     AIFollowUpCandidate[]
   >
-  const planEndingSoon: AIPlanEndingSoonCandidate[] = []
-  const latestOverallByPatientId = new Map<string, { fullName: string; date: string }>()
+  const unfinishedByPatientId = new Map<string, AIUnfinishedTreatmentCandidate>()
+  const lastTreatmentByPatientId = new Map<string, { fullName: string; date: string }>()
 
   for (const row of items) {
     const patientId = row.patient_id
     const fullName = row.patients?.full_name ?? "Bilinmeyen Hasta"
-    const lastSession = latestSessionByItemId.get(row.id)
+    const isBooked = bookedPatientIds.has(patientId)
+    const lastCompletion = latestCompletionByItemId.get(row.id)
 
-    if (lastSession) {
-      const existingOverall = latestOverallByPatientId.get(patientId)
-      if (!existingOverall || lastSession.performedAt > existingOverall.date) {
-        latestOverallByPatientId.set(patientId, { fullName, date: lastSession.performedAt })
+    if (lastCompletion) {
+      const lastDay = lastCompletion.performedAt.slice(0, 10)
+      if ((lastTreatmentByPatientId.get(patientId)?.date ?? "") < lastDay) {
+        lastTreatmentByPatientId.set(patientId, { fullName, date: lastDay })
       }
 
-      const treatmentNameLower = row.treatment_name.toLocaleLowerCase("tr")
-      const matchedRule = FOLLOW_UP_RULES.find((rule) =>
-        rule.keywords.some((keyword) => treatmentNameLower.includes(keyword)),
-      )
-      if (matchedRule) {
-        const dueDate = lastSession.controlDate ?? addDays(lastSession.performedAt, matchedRule.intervalDays)
-        if (new Date(dueDate) <= now) {
-          byRule[matchedRule.key].push({
-            patientId,
-            fullName,
-            lastSessionDate: lastSession.performedAt,
-            daysSinceLastSession: daysBetween(lastSession.performedAt, now),
-          })
+      const due = resolveFollowUpDueDate({
+        treatmentName: row.treatment_name,
+        lastCompletedAt: lastCompletion.performedAt,
+        completionControlDate: lastCompletion.controlDate,
+        itemControlDate: row.control_date,
+      })
+      const visitedSince = (latestVisitDayByPatientId.get(patientId) ?? "") > lastDay
+      const rule = matchFollowUpRule(row.treatment_name)
+      if (due && rule && due.dueDate <= today && !isBooked && !visitedSince) {
+        const bucket = byRule[rule.key]
+        if (!bucket.some((candidate) => candidate.patientId === patientId)) {
+          bucket.push({ patientId, fullName, treatmentName: row.treatment_name, lastTreatmentDate: lastDay, dueDate: due.dueDate })
         }
       }
     }
 
-    if (row.status === "active") {
-      const completed = completedCountByItemId.get(row.id) ?? 0
-      const remaining = Math.max(row.session_count - completed, 0)
-      if (remaining === PLAN_ENDING_SESSIONS_REMAINING) {
-        planEndingSoon.push({ patientId, fullName, treatmentName: row.treatment_name, remainingSessions: remaining })
-      }
+    if (row.status === "active" && row.plan?.status === "active" && !isBooked) {
+      const completed = completedTeethByItemId.get(row.id) ?? new Set<number>()
+      const candidate = unfinishedByPatientId.get(patientId) ?? { patientId, fullName, pendingTreatments: [] }
+      candidate.pendingTreatments.push({
+        treatmentName: row.treatment_name,
+        remainingToothNumbers: (row.tooth_numbers ?? []).filter((tooth) => !completed.has(tooth)),
+      })
+      unfinishedByPatientId.set(patientId, candidate)
     }
   }
 
-  const inactivePatients = Array.from(latestOverallByPatientId.entries())
+  const periodicCheckups = Array.from(lastTreatmentByPatientId.entries())
+    .filter(([patientId]) => !bookedPatientIds.has(patientId) && !latestVisitDayByPatientId.has(patientId))
     .map(([patientId, value]) => ({
       patientId,
       fullName: value.fullName,
-      lastSessionDate: value.date,
-      daysSinceLastSession: daysBetween(value.date, now),
+      lastTreatmentDate: value.date,
+      daysSinceLastTreatment: daysBetween(value.date, new Date()),
     }))
-    .filter((row) => row.daysSinceLastSession >= INACTIVE_PATIENT_THRESHOLD_DAYS)
+    .filter((row) => row.daysSinceLastTreatment >= PERIODIC_CHECKUP_DAYS)
 
-  return { byRule, planEndingSoon, inactivePatients }
+  return { byRule, unfinishedTreatments: Array.from(unfinishedByPatientId.values()), periodicCheckups }
 }
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,14 @@ import { geminiModel } from "@/lib/ai/gemini"
 import { aiTools } from "@/lib/ai/tools"
 import { ROLE_LABELS, type StaffRole } from "@/lib/staff/constants"
 
-const BASE_INSTRUCTIONS = `Sen DentaFlow AI'nin klinik içi yapay zeka asistanısın. Görevin klinik personeline günlük operasyon, hasta takibi ve hatırlatma konularında yardımcı olmak — bir iletişim botu değilsin.
+const BASE_INSTRUCTIONS = `Sen DentaFlow AI'nin klinik içi yapay zeka asistanısın. DentaFlow bir diş kliniği yönetim sistemi; görevin diş hekimlerine, sekreterlere ve klinik sahibine günlük operasyon, hasta takibi ve hatırlatma konularında yardımcı olmak — bir iletişim botu değilsin.
+
+DİŞ KLİNİĞİ BAĞLAMI:
+- Hastaların tedavileri "tedavi planı" içinde tutulur; her planda bir veya daha fazla tedavi kalemi (ör. Dolgu, Kanal tedavisi, İmplant, Çekim, Diş taşı temizliği) ve her kalemin hekimi vardır.
+- Dişler FDI numaralandırmasıyla belirtilir: kalıcı dişler 11-48 (ilk rakam çene bölgesi 1-4, ikinci rakam diş sırası), süt dişleri 51-85. Diş numaralarını olduğu gibi kullan, uydurma.
+- İlerleme seansla değil diş bazında takip edilir: bir kalemin dişlerinin bir kısmı tamamlanmış olabilir ("kısmen tamamlandı"). "Seans" ya da "paket" kavramını kullanma.
+- Takip önerilerinde klinik kurallar: çekim sonrası 7 gün, kanal tedavisi/implant/diş taşı temizliği sonrası 6 ay kontrol; hekimin elle girdiği kontrol tarihi her zaman önceliklidir. 6 aydır gelmeyen hastalar periyodik kontrole çağrılabilir. Tamamlanmamış tedavisi olup randevusu olmayan hastalar önceliklidir.
+- Tıbbi teşhis koyma veya tedavi önerme; yalnızca sistemdeki kayıtları özetle ve takip/randevu hatırlatması yap.
 
 KURALLAR (asla ihlal etme):
 - Hiçbir zaman SMS, WhatsApp veya e-posta göndermezsin; hiçbir otomatik iletişim başlatamazsın. Yalnızca bilgi ve öneri sunarsın.
@@ -35,7 +42,7 @@ const DEFAULT_TOOLS_CONTEXT = {
   getTodayAppointments: UNUSED_DEFAULT_TOOL_CONTEXT,
   getUpcomingAppointments: UNUSED_DEFAULT_TOOL_CONTEXT,
   getPatientSummary: UNUSED_DEFAULT_TOOL_CONTEXT,
-  getPackageStatus: UNUSED_DEFAULT_TOOL_CONTEXT,
+  getTreatmentPlanStatus: UNUSED_DEFAULT_TOOL_CONTEXT,
   getNewPatientStats: UNUSED_DEFAULT_TOOL_CONTEXT,
   getFollowUpCandidates: UNUSED_DEFAULT_TOOL_CONTEXT,
 }
@@ -74,7 +81,7 @@ ${options.contextSnapshotJson}`,
         getTodayAppointments: options,
         getUpcomingAppointments: options,
         getPatientSummary: options,
-        getPackageStatus: options,
+        getTreatmentPlanStatus: options,
         getNewPatientStats: options,
         getFollowUpCandidates: options,
       },
