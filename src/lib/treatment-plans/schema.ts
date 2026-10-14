@@ -81,37 +81,25 @@ export const setProviderShareSchema = z.object({
 
 export type SetProviderShareValues = z.infer<typeof setProviderShareSchema>
 
-/** "Seansı Tamamla" — a `treatment_sessions` row is only ever created at this moment, never pre-scheduled. */
-export const completeSessionFormSchema = z.object({
-  treatmentPlanItemId: z.string().min(1, "Tedavi kalemi seçin."),
+/**
+ * "Tamamlandı" (2026-10-14) — completes the given teeth of an item, or the
+ * whole item when it has no charted teeth (`toothNumbers` empty). Who/when are
+ * not asked: the item's own hekim, today.
+ */
+export const completeTreatmentTeethSchema = z.object({
+  treatmentPlanItemId: z.string().min(1),
+  toothNumbers: toothNumbersSchema,
   appointmentId: z.string().optional(),
-  performedBy: z.string().min(1, "Personel seçin."),
-  performedAt: z.string().min(1, "Tarih seçin."),
-  controlDate: z.string().optional(),
-  notes: z.string().trim().max(2000, "Not 2000 karakteri geçemez.").optional(),
 })
 
-export type CompleteSessionFormValues = z.infer<typeof completeSessionFormSchema>
+export type CompleteTreatmentTeethValues = z.infer<typeof completeTreatmentTeethSchema>
 
-/** "Seansı Düzelt" — the original session is marked `corrected` (never updated in place), a new `completed` row is inserted with the same `session_number`. `reason` is mandatory — see `treatment_sessions_state_machine_consistent`. */
-export const correctSessionFormSchema = z.object({
+/** "Geri al" — voids one completion record, putting its teeth back to pending. */
+export const undoTreatmentCompletionSchema = z.object({
   sessionId: z.string().min(1),
-  reason: z.string().trim().min(1, "Düzeltme sebebini girin.").max(500, "Sebep 500 karakteri geçemez."),
-  performedBy: z.string().min(1, "Personel seçin."),
-  performedAt: z.string().min(1, "Tarih seçin."),
-  controlDate: z.string().optional(),
-  notes: z.string().trim().max(2000, "Not 2000 karakteri geçemez.").optional(),
 })
 
-export type CorrectSessionFormValues = z.infer<typeof correctSessionFormSchema>
-
-/** "Seansı İptal Et" — marks the row `voided` in place, no replacement row (this visit never should have counted). */
-export const voidSessionFormSchema = z.object({
-  sessionId: z.string().min(1),
-  reason: z.string().trim().min(1, "İptal sebebini girin.").max(500, "Sebep 500 karakteri geçemez."),
-})
-
-export type VoidSessionFormValues = z.infer<typeof voidSessionFormSchema>
+export type UndoTreatmentCompletionValues = z.infer<typeof undoTreatmentCompletionSchema>
 
 /** "Ödeme Ekle" — always `entry_type = 'payment'`; refund/adjustment go through `treatmentPlanPaymentCorrectionSchema` instead. */
 export const treatmentPlanPaymentFormSchema = z.object({
@@ -158,10 +146,3 @@ export const deleteTreatmentPlanItemSchema = z.object({
 })
 
 export type DeleteTreatmentPlanItemValues = z.infer<typeof deleteTreatmentPlanItemSchema>
-
-export const deleteTreatmentSessionSchema = z.object({
-  sessionId: z.string().min(1),
-  reason: z.string().trim().min(1, "Silme sebebini girin.").max(500, "Sebep 500 karakteri geçemez."),
-})
-
-export type DeleteTreatmentSessionValues = z.infer<typeof deleteTreatmentSessionSchema>

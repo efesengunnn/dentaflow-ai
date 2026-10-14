@@ -122,6 +122,55 @@ export const STANDALONE_TREATMENT_SESSION_COUNT = 1
 export const PATIENT_TREATMENT_PLAN_LIMIT = 10
 
 /**
+ * Tooth-based progress (founder decision 2026-10-14), replacing the session
+ * counter on the patient card and appointment detail: an item is in progress,
+ * partly done (several charted teeth, only some completed) or done. `done`
+ * always follows `status`, which the database keeps in sync — see
+ * `20261014090000_track_treatment_completion_per_tooth.sql`.
+ */
+export type TreatmentProgress = "pending" | "partial" | "done"
+
+export const TREATMENT_PROGRESS_LABELS: Record<TreatmentProgress, string> = {
+  pending: "Devam Ediyor",
+  partial: "Kısmen Tamamlandı",
+  done: "Tamamlandı",
+}
+
+export const TREATMENT_PROGRESS_BADGE_VARIANT: Record<TreatmentProgress, "warning" | "info" | "success"> = {
+  pending: "warning",
+  partial: "info",
+  done: "success",
+}
+
+/** Teeth of an item covered by a live tooth-based completion; every tooth once the item is `completed` (legacy session-based items carry no tooth info). */
+export function collectCompletedTeeth(
+  status: TreatmentLifecycleStatus,
+  toothNumbers: readonly number[],
+  completions: readonly { toothNumbers: readonly number[] }[],
+): number[] {
+  if (status === "completed") return [...toothNumbers]
+  const done = new Set(completions.flatMap((completion) => completion.toothNumbers))
+  return toothNumbers.filter((tooth) => done.has(tooth))
+}
+
+export function deriveItemProgress(item: {
+  status: TreatmentLifecycleStatus
+  toothNumbers: readonly number[]
+  completedToothNumbers: readonly number[]
+}): TreatmentProgress {
+  if (item.status === "completed") return "done"
+  return item.toothNumbers.length > 1 && item.completedToothNumbers.length > 0 ? "partial" : "pending"
+}
+
+export function derivePlanProgress(plan: {
+  status: TreatmentLifecycleStatus
+  items: readonly { status: TreatmentLifecycleStatus; toothNumbers: readonly number[]; completedToothNumbers: readonly number[] }[]
+}): TreatmentProgress {
+  if (plan.status === "completed") return "done"
+  return plan.items.some((item) => deriveItemProgress(item) !== "pending") ? "partial" : "pending"
+}
+
+/**
  * An item's line total: the unit price applies per charted tooth (3 teeth of
  * Dolgu = 3× the Dolgu price). No teeth charted = whole-mouth/one-off, priced
  * once. Session count never multiplies it (founder decision 2026-09-13).

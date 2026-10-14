@@ -24,8 +24,9 @@ import type { AssignableStaff } from "@/lib/staff/queries"
 import { fetchCatalogForStaff } from "@/lib/treatment-catalog/actions"
 import type { CatalogItem } from "@/lib/treatment-catalog/queries"
 import { getPatientActiveTreatmentPlansForAppointment } from "@/lib/treatment-plans/actions"
-import type { RemainingSessionItem } from "@/lib/treatment-plans/queries"
+import type { BookableTreatmentItem } from "@/lib/treatment-plans/queries"
 import { dateStringToLocalDate } from "@/lib/format/date"
+import { formatToothList } from "@/lib/odontogram/fdi"
 import { cn } from "@/lib/utils"
 
 type AppointmentTreatmentSectionProps = {
@@ -65,7 +66,7 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
   // hekim) paketten birden fazla tedaviyi kapsayabilir (örn. Dolgu + Kanal
   // aynı 16:00'da). Seçim aynı hekimin kalemleriyle sınırlıdır — randevunun
   // tek `staffId`/çakışma modeli korunur.
-  const [remainingItems, setRemainingItems] = useState<RemainingSessionItem[]>([])
+  const [remainingItems, setRemainingItems] = useState<BookableTreatmentItem[]>([])
   const [loadedForPatientId, setLoadedForPatientId] = useState<string | null>(null)
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
 
@@ -96,7 +97,7 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
 
   /** Sync selected item ids into the form. First item's plan/provider mirror the
    *  legacy single columns + the appointment's `staffId`; all ids go to the array. */
-  function syncSelection(ids: string[], source: RemainingSessionItem[]) {
+  function syncSelection(ids: string[], source: BookableTreatmentItem[]) {
     setSelectedItemIds(ids)
     const first = source.find((row) => row.itemId === ids[0])
     setValue("treatmentPlanItemIds", ids)
@@ -105,7 +106,7 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
     setValue("staffId", first?.providerId ?? "")
   }
 
-  function toggleItem(item: RemainingSessionItem) {
+  function toggleItem(item: BookableTreatmentItem) {
     if (selectedItemIds.includes(item.itemId)) {
       syncSelection(selectedItemIds.filter((id) => id !== item.itemId), remainingItems)
     } else {
@@ -296,9 +297,11 @@ function AppointmentTreatmentSection({ setValue, patientId, staffOptions, appoin
                       {disabled && <span className="text-muted-foreground"> · başka hekim</span>}
                     </span>
                   </span>
-                  <span className="shrink-0 text-muted-foreground">
-                    {item.remainingSessions}/{item.sessionCount} kaldı
-                  </span>
+                  {item.remainingToothNumbers.length > 0 && (
+                    <span className="shrink-0 text-muted-foreground tabular-nums">
+                      Diş {formatToothList(item.remainingToothNumbers)}
+                    </span>
+                  )}
                 </button>
               )
             })}

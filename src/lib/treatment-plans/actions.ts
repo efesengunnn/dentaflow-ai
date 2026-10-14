@@ -14,38 +14,35 @@ import {
   canCreateTreatmentPlan,
   canDeleteTreatmentPlan,
   canDeleteTreatmentPlanItem,
-  canDeleteTreatmentSession,
   canRecordPayment,
   canReviseTreatmentPlan,
 } from "@/lib/treatment-plans/permissions"
 import {
-  getRemainingSessionsForPatient,
+  getBookableTreatmentItemsForPatient,
   getTreatmentPlanDetail,
-  type RemainingSessionItem,
+  type BookableTreatmentItem,
   type TreatmentPlanDetail,
 } from "@/lib/treatment-plans/queries"
 import {
-  completeSessionFormSchema,
-  correctSessionFormSchema,
+  completeTreatmentTeethSchema,
   deleteTreatmentPlanItemSchema,
   deleteTreatmentPlanSchema,
-  deleteTreatmentSessionSchema,
   reviseTreatmentPlanItemSchema,
   treatmentPlanFormSchema,
   treatmentPlanPaymentCorrectionSchema,
   treatmentPlanPaymentFormSchema,
-  voidSessionFormSchema,
-  type CompleteSessionFormValues,
-  type CorrectSessionFormValues,
+  undoTreatmentCompletionSchema,
+  type CompleteTreatmentTeethValues,
   type DeleteTreatmentPlanItemValues,
   type DeleteTreatmentPlanValues,
-  type DeleteTreatmentSessionValues,
   type ReviseTreatmentPlanItemValues,
   type TreatmentPlanFormValues,
   type TreatmentPlanPaymentCorrectionValues,
   type TreatmentPlanPaymentFormValues,
-  type VoidSessionFormValues,
+  type UndoTreatmentCompletionValues,
 } from "@/lib/treatment-plans/schema"
+import { nowInIstanbul } from "@/lib/format/date"
+import { formatToothList } from "@/lib/odontogram/fdi"
 import { flattenZodError } from "@/lib/validation/zod"
 
 type TreatmentActivityInsert = Database["public"]["Tables"]["treatment_activities"]["Insert"]
@@ -63,12 +60,6 @@ export type UpdateTreatmentPlanItemActionState =
 export type DeleteTreatmentActionState =
   | { error: string; fieldErrors?: Record<string, string>; success?: undefined }
   | { success: true; error?: undefined }
-  | undefined
-
-/** Shared by `completeTreatmentSession`/`correctTreatmentSession` — both produce a new `treatment_sessions` row. */
-export type SessionActionState =
-  | { error: string; fieldErrors?: Record<string, string>; success?: undefined }
-  | { success: true; sessionId: string; sessionNumber: number; error?: undefined }
   | undefined
 
 export type RecordTreatmentPlanPaymentActionState =
@@ -292,14 +283,14 @@ export async function updateTreatmentPlanItem(
 }
 
 /**
- * Client-callable wrapper around `getRemainingSessionsForPatient` — the
+ * Client-callable wrapper around `getBookableTreatmentItemsForPatient` — the
  * appointment form's "Mevcut Plandan Devam Et" option fetches this on
  * demand, same on-open/on-patient-change pattern as the legacy module's
  * `fetchActiveSeriesForPatient`.
  */
-export async function getPatientActiveTreatmentPlansForAppointment(patientId: string): Promise<RemainingSessionItem[]> {
+export async function getPatientActiveTreatmentPlansForAppointment(patientId: string): Promise<BookableTreatmentItem[]> {
   if (!patientId) return []
-  return getRemainingSessionsForPatient(patientId)
+  return getBookableTreatmentItemsForPatient(patientId)
 }
 
 /**
@@ -429,84 +420,21 @@ export async function deleteTreatmentPlanItem(values: DeleteTreatmentPlanItemVal
   return { success: true }
 }
 
-/**
- * "Seansı Sil" — a separate facility from the corrected/voided state
- * machine (Sprint 28A), not a replacement for it: this hides a realized
- * visit from active screens without touching what it says happened.
- * `canDeleteTreatmentSession` is a direct alias of
- * `canCorrectOrVoidSession`, so (like correction/void) only a `completed`
- * session can be soft-deleted — one already `corrected`/`voided` is
- * terminal either way.
- */
-export async function deleteTreatmentSession(values: DeleteTreatmentSessionValues): Promise<DeleteTreatmentActionState> {
-  const parsed = deleteTreatmentSessionSchema.safeParse(values)
-  if (!parsed.success) {
-    return { error: "Formda hatalar var.", fieldErrors: flattenZodError(parsed.error) }
-  }
-
-  const staffMember = await getCurrentStaffMember()
-  if (!staffMember) return { error: "Oturum bulunamadı." }
-
-  const supabase = await createClient()
-
-  const { data: session, error: sessionError } = await supabase
-    .from("treatment_sessions")
-    .select("id, patient_id, performed_by, status, created_at")
-    .eq("id", parsed.data.sessionId)
-    .is("deleted_at", null)
-    .maybeSingle()
-
-  if (sessionError || !session) return { error: "Seans bulunamadı." }
-
-  const canDelete = canDeleteTreatmentSession(actorFrom(staffMember), {
-    performedBy: session.performed_by,
-    createdAt: session.created_at,
-    status: session.status,
-  })
-  if (!canDelete) {
-    return { error: "Bu işlem için yetkiniz yok — sadece kendi seanslarınızı veya (owner iseniz) her seansı silebilirsiniz." }
-  }
-
-  const { error: updateError } = await supabase
-    .from("treatment_sessions")
-    .update({
-      deleted_at: new Date().toISOString(),
-      deleted_by: staffMember.userId,
-      delete_reason: parsed.data.reason,
-    })
-    .eq("id", session.id)
-
-  if (updateError) return { error: "Seans silinemedi." }
-
-  const activity: TreatmentActivityInsert = {
-    clinic_id: staffMember.clinicId,
-    treatment_session_id: session.id,
-    activity_type: "session_deleted",
-    description: `Seans kaydı silindi — ${parsed.data.reason}`,
-    created_by: staffMember.userId,
-  }
-  await supabase.from("treatment_activities").insert(activity)
-
-  revalidatePatientPaths(session.patient_id)
-  return { success: true }
-}
-
 function revalidateAppointmentPath(appointmentId: string | null) {
   if (appointmentId) revalidatePath(`/appointments/${appointmentId}`)
 }
 
 /**
- * Sprint 28D — "Seansı Tamamla": the moment a `treatment_sessions` row is
- * actually created for the new model. `session_number` is always
- * server-derived (`completed, non-deleted count + 1`) — the schema doesn't
- * even accept one from the client. Idempotency: when `appointmentId` is
- * given, a second completion attempt against the same appointment+item is
- * rejected outright (the UI's own "already completed" check is not trusted
- * as the real guard). `unit_price_snapshot` freezes the item's current
- * `unit_price` so a later revision never re-prices this visit.
+ * "Tamamlandı" (2026-10-14) — tooth-based completion, replacing the session
+ * form. Inserts one `treatment_sessions` row that records which teeth it
+ * covered; the database trigger then flips the item (and, once every item is
+ * done, the plan) to `completed`. An item without charted teeth is completed
+ * as a whole with an empty `tooth_numbers`. Nothing is asked of the user:
+ * `performed_by` is the item's own hekim and the date is today.
+ * `unit_price_snapshot` freezes the item's current `unit_price` as before.
  */
-export async function completeTreatmentSession(values: CompleteSessionFormValues): Promise<SessionActionState> {
-  const parsed = completeSessionFormSchema.safeParse(values)
+export async function completeTreatmentTeeth(values: CompleteTreatmentTeethValues): Promise<DeleteTreatmentActionState> {
+  const parsed = completeTreatmentTeethSchema.safeParse(values)
   if (!parsed.success) {
     return { error: "Formda hatalar var.", fieldErrors: flattenZodError(parsed.error) }
   }
@@ -520,45 +448,40 @@ export async function completeTreatmentSession(values: CompleteSessionFormValues
 
   const supabase = await createClient()
 
-  if (parsed.data.appointmentId) {
-    const { data: existingForAppointment } = await supabase
-      .from("treatment_sessions")
-      .select("id")
-      .eq("appointment_id", parsed.data.appointmentId)
-      .eq("treatment_plan_item_id", parsed.data.treatmentPlanItemId)
-      .eq("status", "completed")
-      .is("deleted_at", null)
-      .maybeSingle()
-    if (existingForAppointment) {
-      return { error: "Bu randevu için seans zaten tamamlanmış." }
-    }
-  }
-
   const { data: item, error: itemError } = await supabase
     .from("treatment_plan_items")
-    .select("id, patient_id, session_count, unit_price, status")
+    .select("id, patient_id, provider_id, treatment_name, tooth_numbers, unit_price, status")
     .eq("id", parsed.data.treatmentPlanItemId)
     .is("deleted_at", null)
     .maybeSingle()
 
   if (itemError || !item) return { error: "Tedavi kalemi bulunamadı." }
-  if (item.status !== "active") return { error: "Bu kalem artık aktif değil, seans tamamlanamaz." }
+  if (item.status !== "active") return { error: "Bu tedavi zaten tamamlanmış." }
 
-  const { count: completedCount, error: countError } = await supabase
+  const itemTeeth = item.tooth_numbers ?? []
+  const requestedTeeth = parsed.data.toothNumbers ?? []
+
+  const { data: completedRows, error: completedError } = await supabase
     .from("treatment_sessions")
-    .select("id", { count: "exact", head: true })
+    .select("tooth_numbers")
     .eq("treatment_plan_item_id", item.id)
     .eq("status", "completed")
     .is("deleted_at", null)
+  if (completedError) return { error: "Tamamlanan işlemler kontrol edilemedi." }
 
-  if (countError) return { error: "Tamamlanan seans sayısı kontrol edilemedi." }
+  const completedTeeth = new Set((completedRows ?? []).flatMap((row) => row.tooth_numbers ?? []))
 
-  const completed = completedCount ?? 0
-  if (completed >= item.session_count) {
-    return { error: "Bu kalemde tamamlanacak seans kalmadı." }
+  if (itemTeeth.length === 0) {
+    if (requestedTeeth.length > 0) return { error: "Bu tedavide diş seçimi yok." }
+  } else {
+    if (requestedTeeth.length === 0) return { error: "Tamamlanan dişi seçin." }
+    if (requestedTeeth.some((tooth) => !itemTeeth.includes(tooth))) {
+      return { error: "Seçilen diş bu tedaviye ait değil." }
+    }
+    if (requestedTeeth.some((tooth) => completedTeeth.has(tooth))) {
+      return { error: "Seçilen dişlerden biri zaten tamamlanmış." }
+    }
   }
-
-  const nextSessionNumber = completed + 1
 
   const { data: session, error: insertError } = await supabase
     .from("treatment_sessions")
@@ -567,124 +490,44 @@ export async function completeTreatmentSession(values: CompleteSessionFormValues
       patient_id: item.patient_id,
       treatment_plan_item_id: item.id,
       appointment_id: parsed.data.appointmentId || null,
-      session_number: nextSessionNumber,
-      performed_by: parsed.data.performedBy,
-      performed_at: parsed.data.performedAt,
-      control_date: parsed.data.controlDate || null,
-      notes: parsed.data.notes || null,
+      session_number: (completedRows ?? []).length + 1,
+      performed_by: item.provider_id,
+      performed_at: nowInIstanbul().toISOString().slice(0, 10),
       unit_price_snapshot: item.unit_price,
+      tooth_numbers: requestedTeeth,
       status: "completed",
       created_by: staffMember.userId,
     })
     .select("id")
     .single()
 
-  if (insertError || !session) return { error: "Seans kaydedilemedi." }
+  if (insertError || !session) return { error: "Tamamlandı olarak kaydedilemedi." }
 
   const activity: TreatmentActivityInsert = {
     clinic_id: staffMember.clinicId,
     treatment_session_id: session.id,
     activity_type: "treatment_created",
-    description: `${nextSessionNumber}. seans tamamlandı.`,
+    description:
+      requestedTeeth.length > 0
+        ? `${item.treatment_name} tamamlandı — Diş ${formatToothList(requestedTeeth)}.`
+        : `${item.treatment_name} tamamlandı.`,
     created_by: staffMember.userId,
   }
   await supabase.from("treatment_activities").insert(activity)
 
   revalidatePatientPaths(item.patient_id)
   revalidateAppointmentPath(parsed.data.appointmentId ?? null)
-  return { success: true, sessionId: session.id, sessionNumber: nextSessionNumber }
+  return { success: true }
 }
 
 /**
- * "Seansı Düzelt" — supersede-never-rewrite: the original row is marked
- * `corrected` (never updated again), a fresh `completed` row is inserted
- * with the same `session_number`, and `replaced_by_session_id` links the
- * two. The replacement is inserted first so the original's UPDATE can point
- * at a real id in the same statement it flips to `corrected`.
+ * "Geri al" — voids one completion record (status `voided`, never deleted)
+ * so its teeth return to pending; the trigger re-opens the item/plan. Same
+ * actor rule as any session void (`canCorrectOrVoidSession`, mirrored by RLS).
  */
-export async function correctTreatmentSession(values: CorrectSessionFormValues): Promise<SessionActionState> {
-  const parsed = correctSessionFormSchema.safeParse(values)
-  if (!parsed.success) {
-    return { error: "Formda hatalar var.", fieldErrors: flattenZodError(parsed.error) }
-  }
-
-  const staffMember = await getCurrentStaffMember()
-  if (!staffMember) return { error: "Oturum bulunamadı." }
-
-  const supabase = await createClient()
-
-  const { data: original, error: originalError } = await supabase
-    .from("treatment_sessions")
-    .select("id, treatment_plan_item_id, patient_id, appointment_id, session_number, performed_by, status, created_at, unit_price_snapshot")
-    .eq("id", parsed.data.sessionId)
-    .is("deleted_at", null)
-    .maybeSingle()
-
-  if (originalError || !original) return { error: "Seans bulunamadı." }
-
-  const canCorrect = canCorrectOrVoidSession(actorFrom(staffMember), {
-    performedBy: original.performed_by,
-    createdAt: original.created_at,
-    status: original.status,
-  })
-  if (!canCorrect) {
-    return { error: "Bu işlem için yetkiniz yok — sadece kendi seanslarınızı veya (owner iseniz) her seansı düzeltebilirsiniz." }
-  }
-
-  const { data: replacement, error: insertError } = await supabase
-    .from("treatment_sessions")
-    .insert({
-      clinic_id: staffMember.clinicId,
-      patient_id: original.patient_id,
-      treatment_plan_item_id: original.treatment_plan_item_id,
-      appointment_id: original.appointment_id,
-      session_number: original.session_number,
-      performed_by: parsed.data.performedBy,
-      performed_at: parsed.data.performedAt,
-      control_date: parsed.data.controlDate || null,
-      notes: parsed.data.notes || null,
-      unit_price_snapshot: original.unit_price_snapshot,
-      status: "completed",
-      created_by: staffMember.userId,
-    })
-    .select("id")
-    .single()
-
-  if (insertError || !replacement) return { error: "Düzeltme kaydedilemedi." }
-
-  const { error: updateError } = await supabase
-    .from("treatment_sessions")
-    .update({
-      status: "corrected",
-      corrected_by: staffMember.userId,
-      corrected_at: new Date().toISOString(),
-      correction_reason: parsed.data.reason,
-      replaced_by_session_id: replacement.id,
-    })
-    .eq("id", original.id)
-
-  if (updateError) return { error: "Seans düzeltilemedi." }
-
-  const activity: TreatmentActivityInsert = {
-    clinic_id: staffMember.clinicId,
-    treatment_session_id: replacement.id,
-    activity_type: "treatment_updated",
-    description: `${original.session_number}. seans düzeltildi — ${parsed.data.reason}`,
-    created_by: staffMember.userId,
-  }
-  await supabase.from("treatment_activities").insert(activity)
-
-  revalidatePatientPaths(original.patient_id)
-  revalidateAppointmentPath(original.appointment_id)
-  return { success: true, sessionId: replacement.id, sessionNumber: original.session_number }
-}
-
-/** "Seansı İptal Et" — marks the row `voided` in place, no replacement row (this visit never should have counted). Same actor authority as correction. */
-export async function voidTreatmentSession(values: VoidSessionFormValues): Promise<DeleteTreatmentActionState> {
-  const parsed = voidSessionFormSchema.safeParse(values)
-  if (!parsed.success) {
-    return { error: "Formda hatalar var.", fieldErrors: flattenZodError(parsed.error) }
-  }
+export async function undoTreatmentCompletion(values: UndoTreatmentCompletionValues): Promise<DeleteTreatmentActionState> {
+  const parsed = undoTreatmentCompletionSchema.safeParse(values)
+  if (!parsed.success) return { error: "Geçersiz istek." }
 
   const staffMember = await getCurrentStaffMember()
   if (!staffMember) return { error: "Oturum bulunamadı." }
@@ -693,39 +536,38 @@ export async function voidTreatmentSession(values: VoidSessionFormValues): Promi
 
   const { data: session, error: sessionError } = await supabase
     .from("treatment_sessions")
-    .select("id, patient_id, appointment_id, performed_by, status, created_at, session_number")
+    .select("id, patient_id, appointment_id, performed_by, status, created_at")
     .eq("id", parsed.data.sessionId)
     .is("deleted_at", null)
     .maybeSingle()
 
-  if (sessionError || !session) return { error: "Seans bulunamadı." }
+  if (sessionError || !session) return { error: "Kayıt bulunamadı." }
 
-  const canVoid = canCorrectOrVoidSession(actorFrom(staffMember), {
+  const canUndo = canCorrectOrVoidSession(actorFrom(staffMember), {
     performedBy: session.performed_by,
     createdAt: session.created_at,
     status: session.status,
   })
-  if (!canVoid) {
-    return { error: "Bu işlem için yetkiniz yok — sadece kendi seanslarınızı veya (owner iseniz) her seansı geçersiz kılabilirsiniz." }
-  }
+  if (!canUndo) return { error: "Bu işlemi geri almak için yetkiniz yok." }
 
+  const reason = "Tamamlandı işareti geri alındı."
   const { error: updateError } = await supabase
     .from("treatment_sessions")
     .update({
       status: "voided",
       corrected_by: staffMember.userId,
       corrected_at: new Date().toISOString(),
-      correction_reason: parsed.data.reason,
+      correction_reason: reason,
     })
     .eq("id", session.id)
 
-  if (updateError) return { error: "Seans geçersiz kılınamadı." }
+  if (updateError) return { error: "Geri alınamadı." }
 
   const activity: TreatmentActivityInsert = {
     clinic_id: staffMember.clinicId,
     treatment_session_id: session.id,
     activity_type: "status_changed",
-    description: `${session.session_number}. seans geçersiz kılındı — ${parsed.data.reason}`,
+    description: reason,
     created_by: staffMember.userId,
   }
   await supabase.from("treatment_activities").insert(activity)

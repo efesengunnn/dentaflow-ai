@@ -130,6 +130,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "appointment_treatment_plan_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "staff_members"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "appointment_treatment_plan_items_treatment_plan_item_id_fkey"
             columns: ["treatment_plan_item_id"]
             isOneToOne: false
@@ -1444,6 +1451,7 @@ export type Database = {
           replaced_by_session_id: string | null
           session_number: number
           status: Database["public"]["Enums"]["treatment_session_status"]
+          tooth_numbers: number[] | null
           treatment_plan_item_id: string
           unit_price_snapshot: number | null
           updated_at: string
@@ -1469,6 +1477,7 @@ export type Database = {
           replaced_by_session_id?: string | null
           session_number: number
           status?: Database["public"]["Enums"]["treatment_session_status"]
+          tooth_numbers?: number[] | null
           treatment_plan_item_id: string
           unit_price_snapshot?: number | null
           updated_at?: string
@@ -1494,6 +1503,7 @@ export type Database = {
           replaced_by_session_id?: string | null
           session_number?: number
           status?: Database["public"]["Enums"]["treatment_session_status"]
+          tooth_numbers?: number[] | null
           treatment_plan_item_id?: string
           unit_price_snapshot?: number | null
           updated_at?: string
@@ -1689,6 +1699,14 @@ export type Database = {
       current_staff_role: {
         Args: never
         Returns: Database["public"]["Enums"]["staff_role"]
+      }
+      sync_treatment_plan_item_status: {
+        Args: { p_item_id: string }
+        Returns: undefined
+      }
+      sync_treatment_plan_status: {
+        Args: { p_plan_id: string }
+        Returns: undefined
       }
     }
     Enums: {

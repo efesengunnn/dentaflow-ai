@@ -18,7 +18,7 @@ import { getAssignableStaff } from "@/lib/staff/queries"
 import type { Database } from "@/lib/supabase/database.types"
 import { createClient } from "@/lib/supabase/server"
 import { createTreatmentPlan } from "@/lib/treatment-plans/actions"
-import { getRemainingSessionsForPatient } from "@/lib/treatment-plans/queries"
+import { getBookableTreatmentItemsForPatient } from "@/lib/treatment-plans/queries"
 import { flattenZodError } from "@/lib/validation/zod"
 
 type AppointmentActivityInsert = Database["public"]["Tables"]["appointment_activities"]["Insert"]
@@ -95,14 +95,14 @@ async function applyAppointmentTreatmentPlan(
 
   const supabase = await createClient()
 
-  // Defense-in-depth: the picker only ever offers items with remaining
-  // sessions, but re-confirm here in case they were exhausted by another
-  // booking in the meantime (see appointment-treatment-section.tsx).
-  const remaining = await getRemainingSessionsForPatient(data.patientId)
+  // Defense-in-depth: the picker only ever offers still-active items, but
+  // re-confirm here in case one was completed in the meantime (see
+  // appointment-treatment-section.tsx).
+  const remaining = await getBookableTreatmentItemsForPatient(data.patientId)
   const byId = new Map(remaining.map((row) => [row.itemId, row]))
   const validIds = itemIds.filter((id) => byId.has(id))
   if (validIds.length === 0) {
-    return "Seçilen tedavilerde artık kalan seans yok, plana bağlanamadı."
+    return "Seçilen tedaviler artık tamamlanmış, plana bağlanamadı."
   }
 
   // Full set → junction; first valid item mirrors the legacy single columns so
