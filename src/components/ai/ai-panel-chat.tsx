@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
 const SUGGESTED_PROMPTS = [
   "Bugün kimler geliyor?",
   "Takip edilmesi gereken hastalar kimler?",
-  "Paketi bitmek üzere olan hasta var mı?",
+  "Tedavisi yarım kalan hastalar kimler?",
 ]
 
 /**
@@ -44,7 +44,7 @@ function AIPanelChat() {
         {messages.length === 0 && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
-              Bugünkü randevular, hasta takibi ve paket durumu hakkında sorabilirsiniz.
+              Bugünkü randevular, hasta takibi ve tedavi planları hakkında sorabilirsiniz.
             </p>
             <div className="flex flex-col gap-2">
               {SUGGESTED_PROMPTS.map((prompt) => (
