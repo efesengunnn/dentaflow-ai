@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn, getInitials } from "@/lib/utils"
-import type { AIPatientSummary } from "@/lib/ai/queries"
+import { summarizePatientTreatments } from "@/lib/ai/summary"
 import type { ClinicSettings } from "@/lib/clinic/queries"
 import type { AppointmentListRow } from "@/lib/appointments/queries"
 import type { PatientDocument } from "@/lib/documents/queries"
@@ -129,7 +129,6 @@ function PatientDetailView({
   treatmentPlans,
   clinic,
   appointmentError,
-  aiSummary,
 }: {
   patient: PatientDetail
   activities: PatientActivityRow[]
@@ -152,7 +151,6 @@ function PatientDetailView({
   /** Sprint 35 — klinik başlık bilgisi (ad/adres/tel/logo), "Özet" raporunun üst bandı için. */
   clinic: ClinicSettings | null
   appointmentError?: string
-  aiSummary: AIPatientSummary | null
 }) {
   const now = new Date()
 
@@ -163,6 +161,10 @@ function PatientDetailView({
     .filter((appointment) => appointment.status !== "cancelled" && new Date(appointment.startsAt) <= now)
     .sort((a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime())[0]
   const upcomingProcedure = nextAppointment?.procedureName ?? nextAppointment?.reason ?? null
+  const aiSummary = summarizePatientTreatments(treatmentPlans, {
+    hasUpcomingAppointment: nextAppointment !== undefined,
+    lastAppointmentAt: lastAppointment?.startsAt ?? null,
+  })
 
   // --- Financials from the new plan model, per currency ---------------------
   const activePlans = treatmentPlans.filter((plan) => plan.status !== "voided")

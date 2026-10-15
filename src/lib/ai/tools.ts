@@ -2,18 +2,15 @@ import { tool } from "ai"
 import { z } from "zod"
 
 import {
-  getClinicPackageStatusForAI,
+  getActiveTreatmentPlanCountForAI,
   getNewPatientStatsForAI,
-  getPatientPackageStatusForAI,
   getPatientSummaryForAI,
+  getPatientTreatmentPlansForAI,
   getTodayAppointmentsForAI,
   getUpcomingAppointmentsForAI,
   searchPatientsByName,
 } from "@/lib/ai/queries"
-// Sprint 28D — follow-up candidates now come from the new Treatment Plan
-// model (treatment_plan_items/treatment_sessions) exclusively; the other
-// tools above stay on the legacy queries, unchanged, out of this sprint's
-// scope.
+// Every treatment read comes from the treatment plan model (2026-10-14).
 import { getFollowUpCandidatesForAI } from "@/lib/treatment-plans/queries"
 
 /**
@@ -55,30 +52,28 @@ export const aiTools = {
 
   getPatientSummary: tool({
     description:
-      "Belirli bir hastanın özetini getirir: son işlem tarihi/türü, önerilen kontrol tarihi, aktif paket sayısı ve kalan seans sayısı. Finansal erişimi olmayan kullanıcılar için bakiye bilgisi döndürülmez.",
+      "Belirli bir hastanın diş tedavisi özetini getirir: son yapılan tedavi (tarih, dişler), bekleyen/tamamlanmamış tedaviler ve kalan dişleri, önerilen kontrol tarihi, ileri tarihli randevusu olup olmadığı ve dikkat notları. Finansal erişim varsa para birimine göre kalan bakiye de döner.",
     inputSchema: z.object({ patientName: z.string().describe("Hastanın adı soyadı") }),
     contextSchema: aiToolContextSchema,
     execute: async ({ patientName }, { context }) => {
       const resolved = await resolveSinglePatient(patientName)
       if (resolved.status !== "found") return resolved
-      const summary = await getPatientSummaryForAI(resolved.patient.id, context.hasFinancialAccess)
-      return summary ?? { status: "not_found" as const }
+      return getPatientSummaryForAI(resolved.patient, context.hasFinancialAccess)
     },
   }),
 
-  getPackageStatus: tool({
+  getTreatmentPlanStatus: tool({
     description:
-      "Paket durumunu getirir. Bir hasta adı verilirse o hastanın paketlerini (kalan seans, finansal erişim varsa bakiye), verilmezse kliniğin genelindeki aktif paket sayısını ve bitmek üzere olan paket sayısını döndürür.",
+      "Tedavi planı durumunu getirir. Hasta adı verilirse o hastanın planlarını kalem kalem döndürür (tedavi, hekim, FDI diş numaraları, tamamlanan dişler, ilerleme: pending=devam ediyor, partial=kısmen tamamlandı, done=tamamlandı; finansal erişim varsa fiyat). Hasta verilmezse kliniğin aktif tedavi planı sayısını döndürür.",
     inputSchema: z.object({
-      patientName: z.string().optional().describe("Belirtilirse yalnızca bu hastanın paketleri getirilir"),
+      patientName: z.string().optional().describe("Belirtilirse yalnızca bu hastanın planları getirilir"),
     }),
     contextSchema: aiToolContextSchema,
     execute: async ({ patientName }, { context }) => {
-      if (!patientName) return getClinicPackageStatusForAI()
+      if (!patientName) return { activeTreatmentPlanCount: await getActiveTreatmentPlanCountForAI() }
       const resolved = await resolveSinglePatient(patientName)
       if (resolved.status !== "found") return resolved
-      const status = await getPatientPackageStatusForAI(resolved.patient.id, context.hasFinancialAccess)
-      return status ?? { status: "not_found" as const }
+      return getPatientTreatmentPlansForAI(resolved.patient, context.hasFinancialAccess)
     },
   }),
 
@@ -95,7 +90,7 @@ export const aiTools = {
 
   getFollowUpCandidates: tool({
     description:
-      "Takip gereken hastaları tespit eder: Botoks (150 gün), PRP/Mezoterapi (30 gün) kontrolü yaklaşanlar, tedavi planında 1 seans kalanlar, 30+ gündür gelmeyen aktif hastalar. Yalnızca isim ve tarih içerir, finansal bilgi içermez.",
+      "Takip gereken hastaları tespit eder (ileri tarihli randevusu olanlar hariç): kontrolü gelenler (çekim 7 gün, kanal tedavisi 6 ay, implant 6 ay, diş taşı temizliği 6 ay ya da elle girilmiş kontrol tarihi), tedavisi tamamlanmamış ve randevusu olmayanlar (bekleyen dişleriyle), 6 aydır gelmeyenler (periyodik kontrol). Finansal bilgi içermez.",
     inputSchema: z.object({}),
     contextSchema: aiToolContextSchema,
     execute: async () => getFollowUpCandidatesForAI(),

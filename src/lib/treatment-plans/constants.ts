@@ -74,26 +74,51 @@ export const TREATMENT_ACTIVITY_LABELS: Record<TreatmentActivityType, string> = 
 export const SESSION_CORRECTION_WINDOW_HOURS = 24
 
 /**
- * Follow-up detection matches free-text `treatment_plan_items.treatment_name`
- * by keyword — same rule set as the legacy `lib/ai/constants.ts`
- * `FOLLOW_UP_RULES`, duplicated here (not imported) so this module stays
- * independently usable ahead of Sprint 28's later AI-layer cutover (see
- * `docs/CHANGELOG.md`). `intervalDays` is the fallback when a session has no
- * doctor-entered `treatment_sessions.control_date`.
+ * Dental follow-up rules (founder decision 2026-10-14). Matched by keyword
+ * against the free-text `treatment_plan_items.treatment_name` (the catalog has
+ * no structured category yet). A follow-up falls due `intervalDays` after the
+ * treatment's latest completion, unless a control date was entered by hand —
+ * see `resolveFollowUpDueDate`. Single source for the AI chat tools, the
+ * Dashboard "AI Uyarıları" card and the patient card's AI box.
  */
 export const FOLLOW_UP_RULES = [
-  { key: "botoks", label: "Botoks", keywords: ["botoks", "botox"], intervalDays: 150 },
-  { key: "prp", label: "PRP", keywords: ["prp"], intervalDays: 30 },
-  { key: "mezoterapi", label: "Mezoterapi", keywords: ["mezoterapi", "mesoterapi"], intervalDays: 30 },
+  { key: "extraction", label: "Çekim", keywords: ["çekim", "cekim"], intervalDays: 7 },
+  { key: "root_canal", label: "Kanal tedavisi", keywords: ["kanal"], intervalDays: 180 },
+  { key: "implant", label: "İmplant", keywords: ["implant"], intervalDays: 180 },
+  { key: "scaling", label: "Diş taşı temizliği", keywords: ["diş taşı", "dis tasi", "detertraj"], intervalDays: 180 },
 ] as const
 
 export type FollowUpRuleKey = (typeof FOLLOW_UP_RULES)[number]["key"]
+export type FollowUpRule = (typeof FOLLOW_UP_RULES)[number]
 
-/** "30+ gündür gelmeyen aktif hastalar" — days since a patient's last completed session, across any plan. */
-export const INACTIVE_PATIENT_THRESHOLD_DAYS = 30
+export function matchFollowUpRule(treatmentName: string): FollowUpRule | null {
+  const nameLower = treatmentName.toLocaleLowerCase("tr")
+  return FOLLOW_UP_RULES.find((rule) => rule.keywords.some((keyword) => nameLower.includes(keyword))) ?? null
+}
 
-/** "Planı 1 seans kalanlar" — an active plan item with exactly this many sessions left. */
-export const PLAN_ENDING_SESSIONS_REMAINING = 1
+/**
+ * When a treatment's follow-up falls due (`yyyy-mm-dd`): a hand-entered
+ * control date wins (the completion's, then the plan item's), otherwise the
+ * matched rule's interval after the latest completion. `null` = no follow-up
+ * for this treatment.
+ */
+export function resolveFollowUpDueDate(input: {
+  treatmentName: string
+  lastCompletedAt: string
+  completionControlDate: string | null
+  itemControlDate: string | null
+}): { dueDate: string; isEstimate: boolean } | null {
+  const manual = input.completionControlDate ?? input.itemControlDate
+  if (manual) return { dueDate: manual.slice(0, 10), isEstimate: false }
+  const rule = matchFollowUpRule(input.treatmentName)
+  if (!rule) return null
+  const due = new Date(`${input.lastCompletedAt.slice(0, 10)}T00:00:00Z`)
+  due.setUTCDate(due.getUTCDate() + rule.intervalDays)
+  return { dueDate: due.toISOString().slice(0, 10), isEstimate: true }
+}
+
+/** "6 aydır gelmeyen hastalar" — days since a patient's last completed treatment before a routine check-up is due. */
+export const PERIODIC_CHECKUP_DAYS = 180
 
 export const PATIENT_TREATMENT_PLAN_LIMIT = 10
 

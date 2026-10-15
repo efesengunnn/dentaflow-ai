@@ -1,5 +1,5 @@
 import {
-  getClinicPackageStatusForAI,
+  getActiveTreatmentPlanCountForAI,
   getNewPatientStatsForAI,
   getNoShowCountForAI,
   getTodayAppointmentsForAI,
@@ -36,7 +36,7 @@ export async function resolveAIRequestIdentity(): Promise<AIRequestIdentity | nu
 export type AIContextSnapshot = {
   todayAppointments: Awaited<ReturnType<typeof getTodayAppointmentsForAI>>
   upcomingAppointments: Awaited<ReturnType<typeof getUpcomingAppointmentsForAI>>
-  packageStatus: Awaited<ReturnType<typeof getClinicPackageStatusForAI>>
+  activeTreatmentPlanCount: number
   newPatientsThisMonth: number | null
   noShowsThisMonth: number | null
   financialSummary: { monthlyRevenueTRY: number; outstandingBalanceTRY: number } | null
@@ -57,11 +57,11 @@ export type AIContextSnapshot = {
  * Access Principle).
  */
 export async function buildAIContextSnapshot(identity: AIRequestIdentity): Promise<AIContextSnapshot> {
-  const [todayAppointments, upcomingAppointments, packageStatus, newPatientsThisMonth, noShowsThisMonth, financialOverview] =
+  const [todayAppointments, upcomingAppointments, activeTreatmentPlanCount, newPatientsThisMonth, noShowsThisMonth, financialOverview] =
     await Promise.all([
       getTodayAppointmentsForAI(),
       getUpcomingAppointmentsForAI(),
-      getClinicPackageStatusForAI(),
+      getActiveTreatmentPlanCountForAI(),
       getNewPatientStatsForAI(identity.hasFinancialAccess),
       getNoShowCountForAI(identity.hasFinancialAccess),
       identity.hasFinancialAccess ? getFinancialOverview() : Promise.resolve(null),
@@ -70,7 +70,7 @@ export async function buildAIContextSnapshot(identity: AIRequestIdentity): Promi
   return {
     todayAppointments,
     upcomingAppointments,
-    packageStatus,
+    activeTreatmentPlanCount,
     newPatientsThisMonth,
     noShowsThisMonth,
     financialSummary: financialOverview
